@@ -1,0 +1,18 @@
+# Marelle interface messages (English, the reference catalog).
+# Format: key = value. Lines starting with # are comments.
+app.tagline = A configurable AI agent for your terminal
+help.usage = Usage
+help.usage.line = marelle [--lang <code>] <command>
+help.commands = Commands
+help.cmd.help = Show this help
+help.cmd.version = Show the version
+help.cmd.providers = List supported provider kinds
+help.cmd.config = Show where a setting comes from: config explain <key>
+help.options = Options
+help.opt.lang = Interface language: en, ru, fr
+error.unknown_command = Unknown command
+error.unknown_lang = Unknown language
+error.missing_key = Missing setting key. Usage: marelle config explain <key>
+config.not_set = not set
+config.effective = effective value
+config.history = history (lowest to highest priority)

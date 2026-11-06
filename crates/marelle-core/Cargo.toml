@@ -1,0 +1,11 @@
+[package]
+name = "marelle-core"
+description = "Core data types for the Marelle agent"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+rust-version.workspace = true
+
+[lints]
+workspace = true

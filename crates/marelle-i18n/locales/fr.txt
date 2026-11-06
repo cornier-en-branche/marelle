@@ -1,0 +1,18 @@
+# Messages de l'interface de Marelle (français).
+# Format : clé = valeur. Les lignes qui commencent par # sont des commentaires.
+app.tagline = Un agent IA configurable pour votre terminal
+help.usage = Utilisation
+help.usage.line = marelle [--lang <code>] <commande>
+help.commands = Commandes
+help.cmd.help = Afficher cette aide
+help.cmd.version = Afficher la version
+help.cmd.providers = Lister les types de fournisseurs pris en charge
+help.cmd.config = Montrer l'origine d'un réglage : config explain <clé>
+help.options = Options
+help.opt.lang = Langue de l'interface : en, ru, fr
+error.unknown_command = Commande inconnue
+error.unknown_lang = Langue inconnue
+error.missing_key = Clé de réglage manquante. Utilisation : marelle config explain <clé>
+config.not_set = non défini
+config.effective = valeur effective
+config.history = historique (de la priorité la plus basse à la plus haute)

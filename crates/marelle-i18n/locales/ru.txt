@@ -1,0 +1,18 @@
+# Сообщения интерфейса Marelle (русский).
+# Формат: ключ = значение. Строки, начинающиеся с #, — комментарии.
+app.tagline = Настраиваемый ИИ-агент для вашего терминала
+help.usage = Использование
+help.usage.line = marelle [--lang <код>] <команда>
+help.commands = Команды
+help.cmd.help = Показать эту справку
+help.cmd.version = Показать версию
+help.cmd.providers = Список поддерживаемых типов провайдеров
+help.cmd.config = Показать, откуда взята настройка: config explain <ключ>
+help.options = Параметры
+help.opt.lang = Язык интерфейса: en, ru, fr
+error.unknown_command = Неизвестная команда
+error.unknown_lang = Неизвестный язык
+error.missing_key = Не указан ключ настройки. Использование: marelle config explain <ключ>
+config.not_set = не задано
+config.effective = действующее значение
+config.history = история (от низшего приоритета к высшему)

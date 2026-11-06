@@ -1,0 +1,24 @@
+Marelle
+Copyright (C) 2026 Marelle contributors
+
+Marelle is licensed under the GNU Affero General Public License, version 3
+only (AGPL-3.0-only). See the LICENSE file.
+
+
+Third-party notices
+===================
+
+Hermes Agent
+  https://github.com/NousResearch/hermes-agent
+  Copyright (c) 2025 Nous Research
+  MIT License
+
+Marelle is designed with Hermes Agent as a reference. At the time of writing,
+no Hermes source code is included in this repository.
+
+If code from Hermes Agent or any other project is added, record it in this
+file with its copyright line and license, and keep the original license text
+alongside the code. For MIT-licensed code, the full MIT license text must
+travel with copies of the code. Only add code under licenses that are
+compatible with AGPL-3.0-only, such as MIT, BSD, Apache-2.0 and AGPL-3.0
+itself.
