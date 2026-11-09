@@ -580,23 +580,19 @@ fn turn(
     env_vars: &[(String, String)],
     io: &mut Io<'_>,
     interactive: bool,
+    tui: Option<&mut Tui>,
 ) -> io::Result<u8> {
     if conversation.compare.is_empty() {
         single_turn(
-            runtime,
-            plan,
-            conversation,
-            locale,
-            env_vars,
-            io,
-            interactive,
+            runtime, plan, conversation, locale, env_vars, io, interactive, tui,
         )
     } else {
         compare_turn(runtime, plan, conversation, locale, env_vars, io)
     }
 }
 
-/// Asks one model, falling back down the chain when it fails.
+/// Runs the model/tool loop. Tool calls are never executed without passing
+/// through Marelle's permission checks.
 fn single_turn(
     runtime: &Runtime,
     plan: &Plan,
@@ -605,6 +601,7 @@ fn single_turn(
     env_vars: &[(String, String)],
     io: &mut Io<'_>,
     interactive: bool,
+    mut tui: Option<&mut Tui>,
 ) -> io::Result<u8> {
     let mut attempts = Vec::new();
     if !conversation.model.trim().is_empty() {
@@ -612,138 +609,173 @@ fn single_turn(
     }
     attempts.extend(conversation.fallback.iter().cloned());
 
-    // A rule above and below the answer, for a session at a terminal. It
-    // goes to stderr, so a redirected answer stays exactly the answer.
     let framed = interactive && plan.ui.frame;
     if framed {
-        writeln!(
-            io.err,
-            "{}",
-            theme::rule(&plan.ui.theme, plan.ui.width, io.color)
-        )?;
+        writeln!(io.err, "{}", theme::rule(&plan.ui.theme, plan.ui.width, io.color))?;
     }
     let spinner = interactive && plan.ui.spinner && io.color;
     let provider_hint = effective_provider_name(plan, conversation);
     let known = provider_names(&plan.config);
-    let messages = conversation.session.messages().to_vec();
     let lookup = |name: &str| env_lookup(env_vars, name);
+    let max_turns = plan.config.get_u64("agent.max_turns").ok().flatten().unwrap_or(20) as usize;
 
     if attempts.is_empty() {
-        let failure = Failure::usage(tr(locale, "chat.no_model"));
-        return failure.print(io.err);
+        return Failure::usage(tr(locale, "chat.no_model")).print(io.err);
     }
 
     for (index, reference) in attempts.iter().enumerate() {
-        let last = index + 1 == attempts.len();
+        let last_attempt = index + 1 == attempts.len();
         let target = match resolve_target(
-            &plan.config,
-            locale,
-            &lookup,
-            reference,
-            provider_hint.as_deref(),
-            &plan.chat,
+            &plan.config, locale, &lookup, reference, provider_hint.as_deref(), &plan.chat,
         ) {
             Ok(target) => target,
             Err(failure) => {
-                if last {
-                    conversation.session.pop();
+                if last_attempt {
+                    if conversation.session.messages().last().is_some_and(|m| m.role == Role::User) {
+                        conversation.session.pop();
+                    }
                     if framed {
-                        writeln!(
-                            io.err,
-                            "{}",
-                            theme::rule(&plan.ui.theme, plan.ui.width, io.color)
-                        )?;
+                        writeln!(io.err, "{}", theme::rule(&plan.ui.theme, plan.ui.width, io.color))?;
                     }
                     return failure.print(io.err);
                 }
                 failure.print(io.err)?;
-                writeln!(
-                    io.err,
-                    "{}",
-                    tr_with(
-                        locale,
-                        "chat.fallback.try",
-                        &[("model", reference), ("next", &attempts[index + 1])]
-                    )
-                )?;
+                writeln!(io.err, "{}", tr_with(locale, "chat.fallback.try", &[
+                    ("model", reference), ("next", &attempts[index + 1])
+                ]))?;
                 continue;
             }
         };
-        let request = ChatRequest {
-            model: target.model.clone(),
-            system: conversation
-                .system
-                .resolve(Some(&target), plan.chat.system.as_deref()),
-            messages: messages.clone(),
-            max_tokens: target.max_tokens,
-            temperature: target.temperature,
-            stream: false,
-            tools: crate::tools::definitions(),
-        };
 
-        if spinner {
-            write!(io.err, "{}", tr(locale, "ui.thinking"))?;
-            io.err.flush()?;
-        }
-        let (result, flushed, wrote) = {
-            let mut printer = Printer::new(
-                &mut *io.out,
-                &mut *io.err,
-                io.color,
-                plan.chat.show_reasoning,
-            )
-            .with_theme(&plan.ui.theme)
-            .with_spinner(spinner);
-            let result = runtime.block_on(
-                target
-                    .client
-                    .chat(&request, &mut |event: StreamEvent| printer.event(event)),
-            );
-            let wrote = printer.wrote;
-            (result, printer.finish(), wrote)
-        };
-        flushed?;
+        let system = conversation.system.resolve(Some(&target), plan.chat.system.as_deref());
+        let mut tool_rounds = 0usize;
+        let mut any_tool_call = false;
 
-        match result {
-            Ok(outcome) => {
-                if framed {
-                    writeln!(
-                        io.err,
-                        "{}",
-                        theme::rule(&plan.ui.theme, plan.ui.width, io.color)
-                    )?;
-                }
-                answered(plan, conversation, outcome, locale, io)?;
-                return Ok(OK);
+        loop {
+            let request = ChatRequest {
+                model: target.model.clone(),
+                system: system.clone(),
+                messages: conversation.session.messages().to_vec(),
+                max_tokens: target.max_tokens,
+                temperature: target.temperature,
+                stream: false,
+                tools: if tool_rounds < max_turns { crate::tools::definitions() } else { Vec::new() },
+            };
+
+            if spinner && !any_tool_call {
+                write!(io.err, "{}", tr(locale, "ui.thinking"))?;
+                io.err.flush()?;
             }
-            Err(error) => {
-                let failure = provider_failure(locale, &error, &known);
-                // Text already went out; a second answer would be noise.
-                if wrote || last {
-                    conversation.session.pop();
+
+            // A non-streaming response lets both supported wire protocols
+            // return complete, structured tool calls without guessing at
+            // partially streamed argument fragments.
+            let mut events = Vec::new();
+            let result = runtime.block_on(target.client.chat(&request, &mut |event: StreamEvent| {
+                events.push(event);
+                ControlFlow::Continue(())
+            }));
+
+            match result {
+                Err(error) => {
+                    let failure = provider_failure(locale, &error, &known);
+                    if !any_tool_call && events.is_empty() && !last_attempt {
+                        failure.print(io.err)?;
+                        writeln!(io.err, "{}", tr_with(locale, "chat.fallback.try", &[
+                            ("model", reference), ("next", &attempts[index + 1])
+                        ]))?;
+                        break;
+                    }
+                    if conversation.session.messages().last().is_some_and(|m| m.role == Role::User) {
+                        conversation.session.pop();
+                    }
                     if framed {
-                        writeln!(
-                            io.err,
-                            "{}",
-                            theme::rule(&plan.ui.theme, plan.ui.width, io.color)
-                        )?;
+                        writeln!(io.err, "{}", theme::rule(&plan.ui.theme, plan.ui.width, io.color))?;
                     }
                     return failure.print(io.err);
                 }
-                failure.print(io.err)?;
-                writeln!(
-                    io.err,
-                    "{}",
-                    tr_with(
-                        locale,
-                        "chat.fallback.try",
-                        &[("model", reference), ("next", &attempts[index + 1])]
-                    )
-                )?;
+                Ok(outcome) if !outcome.tool_calls.is_empty() => {
+                    if tool_rounds >= max_turns {
+                        let note = format!("Agent stopped: reached agent.max_turns ({max_turns}).");
+                        writeln!(io.err, "{note}")?;
+                        conversation.session.push(Message::new(Role::Assistant, note));
+                        if framed {
+                            writeln!(io.err, "{}", theme::rule(&plan.ui.theme, plan.ui.width, io.color))?;
+                        }
+                        return Ok(OK);
+                    }
+
+                    any_tool_call = true;
+                    tool_rounds += 1;
+                    conversation.session.push(Message::with_tool_calls(
+                        outcome.text,
+                        outcome.tool_calls.clone(),
+                    ));
+
+                    for call in outcome.tool_calls {
+                        writeln!(io.err, "\n[Marelle tool] {}", call.name)?;
+                        let mut approve = |label: &str, detail: &str| -> io::Result<bool> {
+                            if let Some(ui) = tui.as_deref_mut() {
+                                let items = vec![
+                                    SelectorItem {
+                                        value: "allow".to_owned(),
+                                        label: "Allow once".to_owned(),
+                                        detail: detail.to_owned(),
+                                    },
+                                    SelectorItem {
+                                        value: "deny".to_owned(),
+                                        label: "Deny".to_owned(),
+                                        detail: "Do not run this tool call".to_owned(),
+                                    },
+                                ];
+                                let title = format!("{label}?");
+                                Ok(ui.select(&title, &items)?.as_deref() == Some("allow"))
+                            } else if interactive {
+                                writeln!(io.err, "{label}:\n{detail}\nAllow once? [y/N]")?;
+                                io.err.flush()?;
+                                let mut answer = String::new();
+                                io.input.read_line(&mut answer)?;
+                                Ok(matches!(answer.trim().to_ascii_lowercase().as_str(), "y" | "yes"))
+                            } else {
+                                Ok(false)
+                            }
+                        };
+
+                        let result = crate::tools::execute(&call, &plan.config, &mut approve)
+                            .unwrap_or_else(|error| format!("Tool error: {error}"));
+                        conversation.session.push(Message::tool_result(
+                            call.id,
+                            call.name,
+                            result,
+                        ));
+                    }
+                }
+                Ok(outcome) => {
+                    let (flushed, wrote) = {
+                        let mut printer = Printer::new(
+                            &mut *io.out, &mut *io.err, io.color, plan.chat.show_reasoning,
+                        )
+                        .with_theme(&plan.ui.theme)
+                        .with_spinner(spinner && !any_tool_call);
+                        for event in events {
+                            let _ = printer.event(event);
+                        }
+                        let wrote = printer.wrote;
+                        (printer.finish(), wrote)
+                    };
+                    flushed?;
+                    let _ = wrote;
+                    if framed {
+                        writeln!(io.err, "{}", theme::rule(&plan.ui.theme, plan.ui.width, io.color))?;
+                    }
+                    answered(plan, conversation, outcome, locale, io)?;
+                    return Ok(OK);
+                }
             }
         }
     }
-    Ok(OK)
+
+    Ok(1)
 }
 
 /// Asks every compared model at once, then lets a judge merge the answers.
