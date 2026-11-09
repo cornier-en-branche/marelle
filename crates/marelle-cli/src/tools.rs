@@ -465,7 +465,7 @@ fn skill_roots() -> Vec<PathBuf> {
     roots
 }
 
-fn list_skills() -> String {
+pub(crate) fn list_skills() -> String {
     let mut names = Vec::new();
     for root in skill_roots() {
         let Ok(entries) = fs::read_dir(root) else { continue };
