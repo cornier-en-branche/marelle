@@ -180,7 +180,7 @@ cargo clippy --workspace --all-targets -- -D warnings
 cargo fmt --all
 ```
 
-Тесты не ходят в сеть: они общаются с мок-сервером из `crates/marelle-testkit`. CI также собирает Android-бинарники и проверяет заявленную минимальную версию Rust.
+Тесты не ходят в сеть: они общаются с мок-сервером из `crates/marelle-testkit`. GitHub Actions также собирает Android-бинарники и проверяет заявленную минимальную версию Rust. Для зеркала на GitLab добавлен отдельный pipeline; настройка описана в [docs/GITLAB.md](docs/GITLAB.md).
 
 ## Лицензия
 
