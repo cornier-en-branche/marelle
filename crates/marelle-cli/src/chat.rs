@@ -1308,10 +1308,11 @@ fn repl_line(
     io: &mut Io<'_>,
 ) -> io::Result<u8> {
     let theme = &plan.ui.theme;
-    let provider_label = plan.primary.as_ref().map_or_else(
-        || tr(locale, "ui.compare"),
-        |target| target.provider_name.clone(),
-    );
+    let provider_label = conversation
+        .provider_override
+        .clone()
+        .or_else(|| plan.primary.as_ref().map(|target| target.provider_name.clone()))
+        .unwrap_or_else(|| tr(locale, "ui.compare"));
     if plan.ui.banner {
         write!(
             io.err,
@@ -1427,16 +1428,49 @@ fn command(
         writeln!(io.err, "{}", tr_with(locale, key, args))
     };
     let lookup = |name: &str| env_lookup(env_vars, name);
-    let provider_hint = plan
-        .primary
-        .as_ref()
-        .map(|target| target.provider_name.clone());
+    let provider_hint = conversation.provider_override.clone().or_else(|| {
+        plan.primary
+            .as_ref()
+            .map(|target| target.provider_name.clone())
+    });
     match name {
         "exit" | "quit" | "q" => return Ok(Flow::Exit),
         "help" | "?" => say(io, "repl.help", &[])?,
         "clear" => {
             conversation.session.clear();
             say(io, "repl.cleared", &[])?;
+        }
+        "provider" if rest.is_empty() => {
+            let current = conversation
+                .provider_override
+                .as_deref()
+                .or_else(|| plan.primary.as_ref().map(|target| target.provider_name.as_str()))
+                .unwrap_or("not selected");
+            writeln!(io.err, "Current provider: {current}")?;
+        }
+        "provider" if rest == "off" => {
+            conversation.provider_override = None;
+            writeln!(io.err, "Provider override disabled")?;
+        }
+        "provider" => {
+            let known = provider_names(&plan.config);
+            match ProviderConfig::from_config(&plan.config, rest) {
+                Ok(provider) => {
+                    match model_for_provider(
+                        &plan.config,
+                        &conversation.model,
+                        provider_hint.as_deref(),
+                    ) {
+                        Ok(model) => {
+                            conversation.model = model;
+                            conversation.provider_override = Some(provider.name.clone());
+                            writeln!(io.err, "Provider set to {}", provider.name)?;
+                        }
+                        Err(error) => setting_failure(locale, &error).print(io.err)?,
+                    }
+                }
+                Err(error) => provider_failure(locale, &error, &known).print(io.err)?,
+            }
         }
         "model" if rest.is_empty() => say(
             io,
