@@ -641,15 +641,19 @@ fn wrap(text: &str, width: usize) -> Vec<String> {
     let mut current = String::new();
     let mut count = 0usize;
     let mut wrapped_at_boundary = false;
+    let mut trailing_newline_after_wrap = false;
     for character in text.chars() {
         if character == '\n' {
-            if !wrapped_at_boundary || !current.is_empty() {
+            let was_wrapped = wrapped_at_boundary;
+            if !was_wrapped || !current.is_empty() {
                 lines.push(std::mem::take(&mut current));
             }
             count = 0;
             wrapped_at_boundary = false;
+            trailing_newline_after_wrap = was_wrapped;
             continue;
         }
+        trailing_newline_after_wrap = false;
         // Never let model output or configuration text inject terminal
         // control sequences into the UI. Tabs are rendered as spaces.
         if character == '\t' {
@@ -679,7 +683,10 @@ fn wrap(text: &str, width: usize) -> Vec<String> {
             wrapped_at_boundary = true;
         }
     }
-    if !current.is_empty() || lines.is_empty() || (text.ends_with('\n') && !wrapped_at_boundary) {
+    if !current.is_empty()
+        || lines.is_empty()
+        || (text.ends_with('\n') && !trailing_newline_after_wrap)
+    {
         lines.push(current);
     }
     lines
@@ -769,6 +776,8 @@ mod tests {
         );
         assert_eq!(wrap("", 10), [""]);
         assert_eq!(wrap("one\n", 10), ["one", ""]);
+        assert_eq!(wrap("abcde\n", 5), ["abcde"]);
+        assert_eq!(wrap("abcde\n\n", 5), ["abcde", "", ""]);
     }
 
     #[test]
