@@ -15,6 +15,8 @@ help.cmd.help = Показати цю довідку
 help.cmd.version = Показати версію
 help.chat_options = Параметри chat
 help.opt.provider = Ідентифікатор провайдера (див.: marelle providers)
+help.opt.query = Надіслати один запит і завершити роботу
+help.opt.continue = Продовжити останню збережену розмову
 help.opt.model = Назва моделі або провайдер/модель, якщо провайдера не вибрано
 help.opt.system = Системний промпт
 help.opt.max_tokens = Обмежити довжину відповіді в токенах
@@ -64,7 +66,7 @@ chat.judge.header = суддя: {label}
 
 # --- інтерактивний сеанс ---
 repl.banner = {provider} / {model} - /help покаже команди, /exit завершить сеанс
-repl.help = Команди: /help  /clear  /model [назва]  /provider [id|off]  /session [new|назва]  /compare [моделі|off]  /fallback [моделі|off]  /judge [модель|off]  /system [текст|off]  /exit  ·  Ctrl+P — палітра команд
+repl.help = Команди: /help  /clear  /model [назва]  /provider [id|off]  /session [new|назва]  /compare [моделі|off]  /fallback [моделі|off]  /judge [модель|off]  /system [текст|off]  /tools  /skills  /exit  ·  Ctrl+P відкриває палітру команд
 repl.cleared = Розмову очищено.
 repl.model = Модель: {model}
 repl.model_set = Модель переключено на {model}.
