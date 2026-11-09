@@ -256,14 +256,15 @@ impl Tui {
     pub(crate) fn load_history(&mut self, messages: &[Message]) -> io::Result<()> {
         self.messages.clear();
         let start = messages.len().saturating_sub(MAX_MESSAGES);
-        self.messages.extend(messages[start..].iter().map(|message| UiMessage {
-            kind: match message.role {
-                Role::User => MessageKind::User,
-                Role::Assistant => MessageKind::Assistant,
-                Role::System | Role::Tool => MessageKind::Notice,
-            },
-            text: message.content.clone(),
-        }));
+        self.messages
+            .extend(messages[start..].iter().map(|message| UiMessage {
+                kind: match message.role {
+                    Role::User => MessageKind::User,
+                    Role::Assistant => MessageKind::Assistant,
+                    Role::System | Role::Tool => MessageKind::Notice,
+                },
+                text: message.content.clone(),
+            }));
         self.scroll = 0;
         self.render()
     }
