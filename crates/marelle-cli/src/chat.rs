@@ -1476,6 +1476,10 @@ fn repl_tui(
     io: &mut Io<'_>,
     tui: &mut Tui,
 ) -> io::Result<u8> {
+    tui.set_session(conversation.session_name.clone())?;
+    let (provider, model) = tui_model_labels(plan, &conversation, locale);
+    tui.set_model(provider, model)?;
+    tui.load_history(conversation.session.messages())?;
     loop {
         match tui.next_action()? {
             InputAction::Continue => {}
@@ -1484,7 +1488,10 @@ fn repl_tui(
                     tui.set_input(format!("/{command} "))?;
                 }
             }
-            InputAction::Exit => return Ok(OK),
+            InputAction::Exit => {
+                persist_session_store(env_vars, &plan.config, &conversation)?;
+                return Ok(OK);
+            }
             InputAction::Submit(line) => {
                 let model_picker = slash_command(&line)
                     .is_some_and(|(name, rest)| name == "model" && rest.is_empty());
@@ -1547,6 +1554,7 @@ fn repl_tui(
                     tui.push_notice(String::from_utf8_lossy(&status_output).trim().to_owned())?;
                     tui.set_status("Ready")?;
 
+                    persist_session_store(env_vars, &plan.config, &conversation)?;
                     if let Flow::Exit = flow {
                         return Ok(OK);
                     }
@@ -1585,6 +1593,7 @@ fn repl_tui(
                 } else {
                     "Request finished with an error"
                 })?;
+                persist_session_store(env_vars, &plan.config, &conversation)?;
 
                 let (provider, model) = tui_model_labels(plan, &conversation, locale);
                 tui.set_model(provider, model)?;
