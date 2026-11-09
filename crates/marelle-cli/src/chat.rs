@@ -2261,7 +2261,7 @@ mod tests {
             vec![ToolCall {
                 id: "call-1".to_owned(),
                 name: "read_file".to_owned(),
-                arguments: r#"{\"path\":\"README.md\"}"#.to_owned(),
+                arguments: r#"{"path":"README.md"}"#.to_owned(),
             }],
         ));
         session.push(Message::tool_result("call-1", "read_file", "project readme"));
