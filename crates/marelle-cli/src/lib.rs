@@ -62,7 +62,21 @@ pub fn run(args: &[String], env_vars: &[(String, String)], io: &mut Io<'_>) -> i
         None => Locale::from_env(lookup),
     };
 
-    let command = match args::parse(&global.words) {
+    let mut words = global.words.clone();
+    if words.is_empty() && io.interactive {
+        words.push("chat".to_owned());
+    } else if words.first().is_some_and(|word| matches!(word.as_str(), "--tui" | "--continue" | "-c")) {
+        let first = words.remove(0);
+        let mut chat = vec!["chat".to_owned()];
+        if first != "--tui" {
+            chat.push(first);
+        }
+        chat.extend(words);
+        words = chat;
+    } else if words.first().is_some_and(|word| word == "--tui") {
+        words[0] = "chat".to_owned();
+    }
+    let command = match args::parse(&words) {
         Ok(command) => command,
         Err(error) => {
             let (key, name) = match &error {
