@@ -65,7 +65,10 @@ pub fn run(args: &[String], env_vars: &[(String, String)], io: &mut Io<'_>) -> i
     let mut words = global.words.clone();
     if words.is_empty() && io.interactive {
         words.push("chat".to_owned());
-    } else if words.first().is_some_and(|word| matches!(word.as_str(), "--tui" | "--continue" | "-c")) {
+    } else if words
+        .first()
+        .is_some_and(|word| matches!(word.as_str(), "--tui" | "--continue" | "-c"))
+    {
         let first = words.remove(0);
         let mut chat = vec!["chat".to_owned()];
         if first != "--tui" {
