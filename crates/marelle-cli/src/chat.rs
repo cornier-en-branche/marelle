@@ -99,11 +99,11 @@ fn plan(
         (None, None) => return Err(Failure::usage(tr(locale, "chat.no_provider"))),
     };
 
-    let provider = ProviderConfig::from_config(config, &provider_name).map_err(&fail)?;
-    let key = provider.api_key_with(&lookup).map_err(&fail)?;
-    let network = NetworkSettings::from_config(config, &lookup).map_err(&fail)?;
-    let chat = ChatSettings::from_config(config).map_err(&fail)?;
-    let client = Client::new(&provider, key, &network).map_err(&fail)?;
+    let provider = ProviderConfig::from_config(config, &provider_name).map_err(fail)?;
+    let key = provider.api_key_with(&lookup).map_err(fail)?;
+    let network = NetworkSettings::from_config(config, &lookup).map_err(fail)?;
+    let chat = ChatSettings::from_config(config).map_err(fail)?;
+    let client = Client::new(&provider, key, &network).map_err(fail)?;
     Ok(Plan {
         provider_name,
         model,
