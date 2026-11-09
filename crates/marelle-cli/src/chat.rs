@@ -276,16 +276,19 @@ fn plan(
         .map_err(setting)?
         .unwrap_or_default();
     let primary_ref = chosen("chat.model").map(str::to_owned);
-    let primary = match &primary_ref {
-        Some(reference) => Some(resolve_target(
-            config, locale, &lookup, reference, None, &chat,
-        )?),
-        None if !compare.is_empty() => None,
-        None if allow_no_model => None,
-        None if chosen("chat.provider").is_some() => {
-            return Err(Failure::usage(tr(locale, "chat.no_model")));
+    let primary = if allow_no_model {
+        None
+    } else {
+        match &primary_ref {
+            Some(reference) => Some(resolve_target(
+                config, locale, &lookup, reference, None, &chat,
+            )?),
+            None if !compare.is_empty() => None,
+            None if chosen("chat.provider").is_some() => {
+                return Err(Failure::usage(tr(locale, "chat.no_model")));
+            }
+            None => return Err(Failure::usage(tr(locale, "chat.no_provider"))),
         }
-        None => return Err(Failure::usage(tr(locale, "chat.no_provider"))),
     };
     let ui = UiSettings::from_config(config, lookup("COLUMNS").as_deref()).map_err(setting)?;
     Ok(Plan {
