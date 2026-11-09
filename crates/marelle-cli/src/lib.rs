@@ -13,6 +13,7 @@ mod messages;
 mod schema;
 mod settings;
 mod theme;
+mod tools;
 mod tui;
 
 use std::io::{self, BufRead, Write};
