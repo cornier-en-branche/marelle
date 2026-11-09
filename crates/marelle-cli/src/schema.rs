@@ -210,6 +210,12 @@ pub(crate) const SETTINGS: &[SettingSpec] = &[
         description: "How many tool round-trips one question may take.",
     },
     SettingSpec {
+        key: "agent.persist_sessions",
+        kind: Kind::Bool,
+        default: Some("true"),
+        description: "Save local conversations between runs. Stored on this device only.",
+    },
+    SettingSpec {
         key: "permissions.shell",
         kind: Kind::OneOf(PERMISSIONS),
         default: Some("ask"),
