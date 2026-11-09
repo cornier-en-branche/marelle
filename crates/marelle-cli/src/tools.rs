@@ -136,8 +136,10 @@ fn home_path(path: &str) -> PathBuf {
         return std::env::var_os("HOME").map_or_else(|| PathBuf::from(path), PathBuf::from);
     }
     if let Some(rest) = path.strip_prefix("~/") {
-        return std::env::var_os("HOME")
-            .map_or_else(|| PathBuf::from(path), |home| PathBuf::from(home).join(rest));
+        return std::env::var_os("HOME").map_or_else(
+            || PathBuf::from(path),
+            |home| PathBuf::from(home).join(rest),
+        );
     }
     PathBuf::from(path)
 }
@@ -158,9 +160,9 @@ fn canonical_candidate(path: &Path) -> Result<PathBuf, String> {
             .filter(|parent| !parent.as_os_str().is_empty())
             .unwrap_or_else(|| Path::new("."));
     }
-    let mut resolved = ancestor.canonicalize().map_err(|error| {
-        format!("Existing parent cannot be resolved: {error}")
-    })?;
+    let mut resolved = ancestor
+        .canonicalize()
+        .map_err(|error| format!("Existing parent cannot be resolved: {error}"))?;
     for component in missing.iter().rev() {
         resolved.push(component);
     }
@@ -178,7 +180,11 @@ fn roots(config: &Config, key: &str, default: &[&str]) -> Vec<PathBuf> {
         .iter()
         .filter_map(|value| {
             let raw = home_path(value);
-            let path = if raw.is_absolute() { raw } else { cwd.join(raw) };
+            let path = if raw.is_absolute() {
+                raw
+            } else {
+                cwd.join(raw)
+            };
             path.canonicalize().ok()
         })
         .collect()
@@ -187,7 +193,11 @@ fn roots(config: &Config, key: &str, default: &[&str]) -> Vec<PathBuf> {
 fn checked_path(raw: &str, config: &Config, must_exist: bool) -> Result<PathBuf, String> {
     let cwd = std::env::current_dir().map_err(|error| error.to_string())?;
     let input = home_path(raw);
-    let candidate = if input.is_absolute() { input } else { cwd.join(input) };
+    let candidate = if input.is_absolute() {
+        input
+    } else {
+        cwd.join(input)
+    };
     let canonical = if must_exist {
         candidate
             .canonicalize()
@@ -202,7 +212,9 @@ fn checked_path(raw: &str, config: &Config, must_exist: bool) -> Result<PathBuf,
     }
     let denied = roots(config, "permissions.denied_paths", &[]);
     if denied.iter().any(|root| canonical.starts_with(root)) {
-        return Err(format!("Path is blocked by permissions.denied_paths: {raw}"));
+        return Err(format!(
+            "Path is blocked by permissions.denied_paths: {raw}"
+        ));
     }
     Ok(canonical)
 }
@@ -253,7 +265,10 @@ fn read_file(args: &Value, config: &Config) -> Result<String, String> {
         return Err(format!("Not a regular file: {raw}"));
     }
     if metadata.len() > MAX_FILE_BYTES {
-        return Err(format!("File exceeds the {} byte read limit.", MAX_FILE_BYTES));
+        return Err(format!(
+            "File exceeds the {} byte read limit.",
+            MAX_FILE_BYTES
+        ));
     }
     fs::read_to_string(&path)
         .map(truncate)
@@ -267,14 +282,21 @@ fn write_file(args: &Value, config: &Config) -> Result<String, String> {
         .and_then(Value::as_str)
         .ok_or_else(|| "Missing string argument: content".to_owned())?;
     if content.len() as u64 > MAX_FILE_BYTES {
-        return Err(format!("Content exceeds the {} byte write limit.", MAX_FILE_BYTES));
+        return Err(format!(
+            "Content exceeds the {} byte write limit.",
+            MAX_FILE_BYTES
+        ));
     }
     let path = checked_path(raw, config, false)?;
     if let Some(parent) = path.parent() {
         fs::create_dir_all(parent).map_err(|error| error.to_string())?;
     }
     fs::write(&path, content).map_err(|error| error.to_string())?;
-    Ok(format!("Wrote {} bytes to {}.", content.len(), path.display()))
+    Ok(format!(
+        "Wrote {} bytes to {}.",
+        content.len(),
+        path.display()
+    ))
 }
 
 fn edit_file(args: &Value, config: &Config) -> Result<String, String> {
@@ -317,7 +339,10 @@ fn edit_file(args: &Value, config: &Config) -> Result<String, String> {
 
 fn ignored_directory(name: &str) -> bool {
     name.starts_with('.')
-        || matches!(name, "target" | "node_modules" | "vendor" | "dist" | "build")
+        || matches!(
+            name,
+            "target" | "node_modules" | "vendor" | "dist" | "build"
+        )
 }
 
 fn search_tree(
@@ -348,11 +373,15 @@ fn search_tree(
             if *seen_files > MAX_SEARCH_FILES {
                 break;
             }
-            let Ok(metadata) = entry.metadata() else { continue };
+            let Ok(metadata) = entry.metadata() else {
+                continue;
+            };
             if metadata.len() > 256 * 1024 {
                 continue;
             }
-            let Ok(text) = fs::read_to_string(&path) else { continue };
+            let Ok(text) = fs::read_to_string(&path) else {
+                continue;
+            };
             for (index, line) in text.lines().enumerate() {
                 if line.contains(query) {
                     matches.push(format!("{}:{}: {}", path.display(), index + 1, line.trim()));
@@ -380,8 +409,7 @@ fn search_text(args: &Value, config: &Config) -> Result<String, String> {
             }
         }
     } else {
-        search_tree(&path, query, &mut seen, &mut matches)
-            .map_err(|error| error.to_string())?;
+        search_tree(&path, query, &mut seen, &mut matches).map_err(|error| error.to_string())?;
     }
     Ok(if matches.is_empty() {
         "No matches.".to_owned()
@@ -407,7 +435,10 @@ fn terminal(args: &Value, config: &Config) -> Result<String, String> {
     let stderr = String::from_utf8_lossy(&output.stderr);
     let result = format!(
         "exit code: {}\n--- stdout ---\n{}\n--- stderr ---\n{}",
-        output.status.code().map_or_else(|| "signal".to_owned(), |code| code.to_string()),
+        output
+            .status
+            .code()
+            .map_or_else(|| "signal".to_owned(), |code| code.to_string()),
         stdout,
         stderr
     );
@@ -448,7 +479,9 @@ fn fetch_url(args: &Value) -> Result<String, String> {
     if output.stdout.len() > MAX_FILE_BYTES as usize {
         return Err("Response exceeds the 1 MiB limit.".to_owned());
     }
-    Ok(truncate(String::from_utf8_lossy(&output.stdout).into_owned()))
+    Ok(truncate(
+        String::from_utf8_lossy(&output.stdout).into_owned(),
+    ))
 }
 
 fn skill_roots() -> Vec<PathBuf> {
@@ -460,7 +493,12 @@ fn skill_roots() -> Vec<PathBuf> {
     if let Some(config) = std::env::var_os("XDG_CONFIG_HOME") {
         roots.push(PathBuf::from(config).join("marelle").join("skills"));
     } else if let Some(home) = std::env::var_os("HOME") {
-        roots.push(PathBuf::from(home).join(".config").join("marelle").join("skills"));
+        roots.push(
+            PathBuf::from(home)
+                .join(".config")
+                .join("marelle")
+                .join("skills"),
+        );
     }
     roots
 }
@@ -468,7 +506,9 @@ fn skill_roots() -> Vec<PathBuf> {
 pub(crate) fn list_skills() -> String {
     let mut names = Vec::new();
     for root in skill_roots() {
-        let Ok(entries) = fs::read_dir(root) else { continue };
+        let Ok(entries) = fs::read_dir(root) else {
+            continue;
+        };
         for entry in entries.flatten() {
             if !entry.file_type().is_ok_and(|kind| kind.is_dir()) {
                 continue;
@@ -524,8 +564,15 @@ pub(crate) fn execute(
     match call.name.as_str() {
         "terminal" => {
             let command = text_arg(&args, "command")?;
-            if !confirm(config, "permissions.shell", "ask", "Run terminal command", command, approve)
-                .map_err(|error| error.to_string())?
+            if !confirm(
+                config,
+                "permissions.shell",
+                "ask",
+                "Run terminal command",
+                command,
+                approve,
+            )
+            .map_err(|error| error.to_string())?
             {
                 return Ok("Permission denied by the user.".to_owned());
             }
@@ -533,8 +580,15 @@ pub(crate) fn execute(
         }
         "read_file" => {
             let path = text_arg(&args, "path")?;
-            if !confirm(config, "permissions.files_read", "allow", "Read file", path, approve)
-                .map_err(|error| error.to_string())?
+            if !confirm(
+                config,
+                "permissions.files_read",
+                "allow",
+                "Read file",
+                path,
+                approve,
+            )
+            .map_err(|error| error.to_string())?
             {
                 return Ok("Permission denied by the user.".to_owned());
             }
@@ -542,8 +596,15 @@ pub(crate) fn execute(
         }
         "list_directory" => {
             let path = args.get("path").and_then(Value::as_str).unwrap_or(".");
-            if !confirm(config, "permissions.files_read", "allow", "List directory", path, approve)
-                .map_err(|error| error.to_string())?
+            if !confirm(
+                config,
+                "permissions.files_read",
+                "allow",
+                "List directory",
+                path,
+                approve,
+            )
+            .map_err(|error| error.to_string())?
             {
                 return Ok("Permission denied by the user.".to_owned());
             }
@@ -551,9 +612,19 @@ pub(crate) fn execute(
         }
         "search_text" => {
             let path = args.get("path").and_then(Value::as_str).unwrap_or(".");
-            let detail = format!("{} in {path}", args.get("query").and_then(Value::as_str).unwrap_or(""));
-            if !confirm(config, "permissions.files_read", "allow", "Search files", &detail, approve)
-                .map_err(|error| error.to_string())?
+            let detail = format!(
+                "{} in {path}",
+                args.get("query").and_then(Value::as_str).unwrap_or("")
+            );
+            if !confirm(
+                config,
+                "permissions.files_read",
+                "allow",
+                "Search files",
+                &detail,
+                approve,
+            )
+            .map_err(|error| error.to_string())?
             {
                 return Ok("Permission denied by the user.".to_owned());
             }
@@ -561,8 +632,15 @@ pub(crate) fn execute(
         }
         "write_file" | "edit_file" => {
             let path = text_arg(&args, "path")?;
-            if !confirm(config, "permissions.files_write", "ask", "Modify file", path, approve)
-                .map_err(|error| error.to_string())?
+            if !confirm(
+                config,
+                "permissions.files_write",
+                "ask",
+                "Modify file",
+                path,
+                approve,
+            )
+            .map_err(|error| error.to_string())?
             {
                 return Ok("Permission denied by the user.".to_owned());
             }
@@ -574,8 +652,15 @@ pub(crate) fn execute(
         }
         "fetch_url" => {
             let url = text_arg(&args, "url")?;
-            if !confirm(config, "permissions.network", "ask", "Fetch URL", url, approve)
-                .map_err(|error| error.to_string())?
+            if !confirm(
+                config,
+                "permissions.network",
+                "ask",
+                "Fetch URL",
+                url,
+                approve,
+            )
+            .map_err(|error| error.to_string())?
             {
                 return Ok("Permission denied by the user.".to_owned());
             }
@@ -607,7 +692,9 @@ pub(crate) fn project_context(config: &Config) -> String {
         let Ok(path) = checked_path(candidate.to_str().unwrap_or_default(), config, true) else {
             continue;
         };
-        let Ok(metadata) = fs::metadata(&path) else { continue };
+        let Ok(metadata) = fs::metadata(&path) else {
+            continue;
+        };
         if !metadata.is_file() || metadata.len() > 32 * 1024 {
             continue;
         }
@@ -636,11 +723,18 @@ mod tests {
     #[test]
     fn tool_schemas_are_complete_and_unique() {
         let definitions = definitions();
-        let mut names = definitions.iter().map(|item| item.name.as_str()).collect::<Vec<_>>();
+        let mut names = definitions
+            .iter()
+            .map(|item| item.name.as_str())
+            .collect::<Vec<_>>();
         names.sort_unstable();
         names.dedup();
         assert_eq!(names.len(), definitions.len());
-        assert!(definitions.iter().all(|item| item.parameters["type"] == "object"));
+        assert!(
+            definitions
+                .iter()
+                .all(|item| item.parameters["type"] == "object")
+        );
     }
 
     #[test]
@@ -657,7 +751,11 @@ mod tests {
         let _ = fs::remove_dir_all(&dir);
         fs::create_dir_all(&dir).unwrap();
         let mut config = Config::new();
-        config.set(Layer::Default, "permissions.allowed_paths", format!("[\"{}\"]", dir.display()));
+        config.set(
+            Layer::Default,
+            "permissions.allowed_paths",
+            format!("[\"{}\"]", dir.display()),
+        );
         config.set(Layer::Default, "permissions.denied_paths", "[]");
         let target = dir.join("new").join("nested").join("file.txt");
         let args = json!({"path": target.to_string_lossy(), "content": "created"});
@@ -677,7 +775,11 @@ mod tests {
         config.set(Layer::Default, "permissions.allowed_paths", format!("[\"{}\"]", dir.display()));
         config.set(Layer::Default, "permissions.denied_paths", "[]");
         let args = json!({"path": path.to_string_lossy(), "old": "one", "new": "two"});
-        assert!(edit_file(&args, &config).unwrap_err().contains("occurs 2 times"));
+        assert!(
+            edit_file(&args, &config)
+                .unwrap_err()
+                .contains("occurs 2 times")
+        );
         let mut args = args;
         args["replace_all"] = json!(true);
         edit_file(&args, &config).unwrap();
