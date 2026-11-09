@@ -19,7 +19,6 @@ use marelle_providers::{
     ChatOutcome, ChatRequest, Client, FinishReason, NetworkSettings, ProviderConfig, ProviderError,
     StreamEvent, Usage, normalize_name, provider_names,
 };
-use tokio::runtime::Runtime;
 use serde_json::{Value, json};
 use tokio::runtime::Runtime;
 use tokio::task::JoinSet;
@@ -810,7 +809,7 @@ pub(crate) fn run(
     };
     if args.continue_session && !restored {
         return Failure::usage(
-            "No saved Marelle session was found. Start a chat first, or run marelle chat.",
+            "No saved Marelle session was found. Start a chat first, or run marelle chat.".to_owned(),
         )
         .print(io.err);
     }
@@ -967,7 +966,11 @@ fn single_turn(
                         conversation.session.pop();
                     }
                     if framed {
-                        writeln!(io.err, "{}", theme::rule(&plan.ui.theme, plan.ui.width, io.color))?;
+                        writeln!(
+                            io.err,
+                            "{}",
+                            theme::rule(&plan.ui.theme, plan.ui.width, io.color)
+                        )?;
                     }
                     return failure.print(io.err);
                 }
@@ -1050,7 +1053,12 @@ fn single_turn(
                         ]))?;
                         break;
                     }
-                    if conversation.session.messages().last().is_some_and(|m| m.role == Role::User) {
+                    if conversation
+                        .session
+                        .messages()
+                        .last()
+                        .is_some_and(|m| m.role == Role::User)
+                    {
                         conversation.session.pop();
                     }
                     if framed {
@@ -1066,7 +1074,11 @@ fn single_turn(
                             .session
                             .push(Message::new(Role::Assistant, note));
                         if framed {
-                            writeln!(io.err, "{}", theme::rule(&plan.ui.theme, plan.ui.width, io.color))?;
+                            writeln!(
+                                io.err,
+                                "{}",
+                                theme::rule(&plan.ui.theme, plan.ui.width, io.color)
+                            )?;
                         }
                         return Ok(OK);
                     }
