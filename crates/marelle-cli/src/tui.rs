@@ -1024,7 +1024,7 @@ mod tests {
         assert_eq!(command_hint("/prov"), "/provider");
         assert_eq!(
             command_hint("/"),
-            "/clear   /compare   /exit   /fallback   /help   /judge   /model   /quit   /system"
+            "/clear   /compare   /exit   /fallback   /help   /judge   /model   /provider   /quit   /session   /system"
         );
         assert_eq!(command_hint("hello"), "");
         assert_eq!(command_hint("/model glm"), "");
