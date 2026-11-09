@@ -1432,7 +1432,10 @@ fn provider_selector_items(plan: &Plan, conversation: &Conversation) -> Vec<Sele
                 .config
                 .get(&format!("providers.{name}.base_url"))
                 .unwrap_or("custom endpoint");
-            let label = if current.as_deref().is_some_and(|value| normalize_name(value) == name) {
+            let label = if current
+                .as_deref()
+                .is_some_and(|value| normalize_name(value) == name)
+            {
                 format!("{name}  (current)")
             } else {
                 name.clone()
@@ -1469,8 +1472,7 @@ fn tui_model_labels(plan: &Plan, conversation: &Conversation, locale: Locale) ->
     let provider = if !conversation.compare.is_empty() {
         tr(locale, "ui.compare")
     } else {
-        effective_provider_name(plan, conversation)
-            .unwrap_or_else(|| tr(locale, "ui.compare"))
+        effective_provider_name(plan, conversation).unwrap_or_else(|| tr(locale, "ui.compare"))
     };
     (provider, conversation.display_model(plan))
 }
@@ -1484,8 +1486,8 @@ fn repl_line(
     io: &mut Io<'_>,
 ) -> io::Result<u8> {
     let theme = &plan.ui.theme;
-    let provider_label = effective_provider_name(plan, &conversation)
-        .unwrap_or_else(|| tr(locale, "ui.compare"));
+    let provider_label =
+        effective_provider_name(plan, &conversation).unwrap_or_else(|| tr(locale, "ui.compare"));
     if plan.ui.banner {
         write!(
             io.err,
