@@ -1696,6 +1696,32 @@ mod tests {
     }
 
     #[test]
+    fn changing_provider_unwraps_aliases_without_breaking_foreign_model_slashes() {
+        use marelle_config::Layer;
+
+        let mut config = Config::new();
+        config.set(Layer::Default, "models.quick.model", "glm-5.2");
+
+        assert_eq!(
+            model_for_provider(&config, "quick", Some("openai")).unwrap(),
+            "glm-5.2"
+        );
+        assert_eq!(
+            model_for_provider(
+                &config,
+                "openrouter/anthropic/claude-x",
+                Some("openrouter")
+            )
+            .unwrap(),
+            "anthropic/claude-x"
+        );
+        assert_eq!(
+            model_for_provider(&config, "anthropic/claude-x", Some("openrouter")).unwrap(),
+            "anthropic/claude-x"
+        );
+    }
+
+    #[test]
     fn the_interface_follows_the_settings() {
         use marelle_config::Layer;
 
