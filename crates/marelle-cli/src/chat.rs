@@ -421,6 +421,9 @@ impl Conversation {
         if !self.compare.is_empty() {
             return self.compare.join(", ");
         }
+        if let Ok(Some(alias)) = alias(&plan.config, &self.model) {
+            return alias.model;
+        }
         match &plan.primary {
             Some(target) if target.reference == self.model => target.model.clone(),
             _ => self.model.clone(),
@@ -1856,6 +1859,46 @@ mod tests {
             model_for_provider(&config, "anthropic/claude-x", Some("openrouter")).unwrap(),
             "anthropic/claude-x"
         );
+    }
+
+    #[test]
+    fn switching_named_sessions_preserves_messages_and_model_settings() {
+        let mut conversation = Conversation {
+            session: Session::new(),
+            session_name: "Chat 1".to_owned(),
+            saved_sessions: Vec::new(),
+            next_session_id: 2,
+            model: "quick".to_owned(),
+            provider_override: Some("zai".to_owned()),
+            compare: Vec::new(),
+            fallback: vec!["openai/fallback".to_owned()],
+            judge: None,
+            system: SystemChoice::Text("Be precise".to_owned()),
+        };
+        conversation
+            .session
+            .push(Message::new(Role::User, "first conversation"));
+
+        conversation.new_session();
+        assert_eq!(conversation.session_name, "Chat 2");
+        assert!(conversation.session.is_empty());
+        conversation
+            .session
+            .push(Message::new(Role::User, "second conversation"));
+        conversation.model = "openai/other".to_owned();
+        conversation.provider_override = None;
+
+        assert!(conversation.switch_session("Chat 1"));
+        assert_eq!(conversation.session.messages()[0].content, "first conversation");
+        assert_eq!(conversation.model, "quick");
+        assert_eq!(conversation.provider_override.as_deref(), Some("zai"));
+        assert_eq!(conversation.fallback, ["openai/fallback"]);
+
+        assert!(conversation.switch_session("Chat 2"));
+        assert_eq!(conversation.session.messages()[0].content, "second conversation");
+        assert_eq!(conversation.model, "openai/other");
+        assert_eq!(conversation.provider_override, None);
+        assert!(!conversation.switch_session("missing"));
     }
 
     #[test]
