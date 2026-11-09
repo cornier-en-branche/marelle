@@ -56,7 +56,8 @@ pub(crate) fn build_body(
                     content.push(json!({ "type": "text", "text": message.content }));
                 }
                 for call in &message.tool_calls {
-                    let input = serde_json::from_str::<Value>(&call.arguments).unwrap_or_else(|_| json!({}));
+                    let input = serde_json::from_str::<Value>(&call.arguments)
+                        .unwrap_or_else(|_| json!({}));
                     content.push(json!({
                         "type": "tool_use",
                         "id": call.id,
@@ -75,7 +76,8 @@ pub(crate) fn build_body(
                 let mut grouped = false;
                 if let Some(last) = messages.last_mut() {
                     if last.get("role").and_then(Value::as_str) == Some("user") {
-                        if let Some(content) = last.get_mut("content").and_then(Value::as_array_mut) {
+                        if let Some(content) = last.get_mut("content").and_then(Value::as_array_mut)
+                        {
                             content.push(result.clone());
                             grouped = true;
                         }
@@ -103,11 +105,22 @@ pub(crate) fn build_body(
         body.insert("temperature".to_owned(), json!(temperature));
     }
     if !request.tools.is_empty() {
-        body.insert("tools".to_owned(), Value::Array(request.tools.iter().map(|tool| json!({
-            "name": tool.name,
-            "description": tool.description,
-            "input_schema": tool.parameters
-        })).collect()));
+        body.insert(
+            "tools".to_owned(),
+            Value::Array(
+                request
+                    .tools
+                    .iter()
+                    .map(|tool| {
+                        json!({
+                            "name": tool.name,
+                            "description": tool.description,
+                            "input_schema": tool.parameters
+                        })
+                    })
+                    .collect(),
+            ),
+        );
     }
     merge_extra(&mut body, &provider.extra_body);
     Ok(Value::Object(body))
