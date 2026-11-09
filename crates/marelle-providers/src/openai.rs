@@ -51,11 +51,19 @@ pub(crate) fn build_body(
             }
         }
         if message.role == Role::Assistant && !message.tool_calls.is_empty() {
-            wire["tool_calls"] = Value::Array(message.tool_calls.iter().map(|call| json!({
-                "id": call.id,
-                "type": "function",
-                "function": { "name": call.name, "arguments": call.arguments }
-            })).collect());
+            wire["tool_calls"] = Value::Array(
+                message
+                    .tool_calls
+                    .iter()
+                    .map(|call| {
+                        json!({
+                            "id": call.id,
+                            "type": "function",
+                            "function": { "name": call.name, "arguments": call.arguments }
+                        })
+                    })
+                    .collect(),
+            );
         }
         messages.push(wire);
     }
@@ -77,14 +85,25 @@ pub(crate) fn build_body(
         body.insert("temperature".to_owned(), json!(temperature));
     }
     if !request.tools.is_empty() {
-        body.insert("tools".to_owned(), Value::Array(request.tools.iter().map(|tool| json!({
-            "type": "function",
-            "function": {
-                "name": tool.name,
-                "description": tool.description,
-                "parameters": tool.parameters
-            }
-        })).collect()));
+        body.insert(
+            "tools".to_owned(),
+            Value::Array(
+                request
+                    .tools
+                    .iter()
+                    .map(|tool| {
+                        json!({
+                            "type": "function",
+                            "function": {
+                                "name": tool.name,
+                                "description": tool.description,
+                                "parameters": tool.parameters
+                            }
+                        })
+                    })
+                    .collect(),
+            ),
+        );
         body.insert("tool_choice".to_owned(), json!("auto"));
     }
     merge_extra(&mut body, &provider.extra_body);
@@ -179,10 +198,18 @@ impl Decoder {
             }
             if let Some(calls) = part.get("tool_calls").and_then(Value::as_array) {
                 for call in calls {
-                    let Some(id) = call.get("id").and_then(Value::as_str) else { continue };
-                    let Some(function) = call.get("function") else { continue };
-                    let Some(name) = function.get("name").and_then(Value::as_str) else { continue };
-                    let arguments = function.get("arguments").and_then(Value::as_str)
+                    let Some(id) = call.get("id").and_then(Value::as_str) else {
+                        continue;
+                    };
+                    let Some(function) = call.get("function") else {
+                        continue;
+                    };
+                    let Some(name) = function.get("name").and_then(Value::as_str) else {
+                        continue;
+                    };
+                    let arguments = function
+                        .get("arguments")
+                        .and_then(Value::as_str)
                         .map(str::to_owned)
                         .or_else(|| function.get("arguments").map(Value::to_string))
                         .unwrap_or_else(|| "{}".to_owned());
@@ -397,9 +424,15 @@ mod tests {
         with_tool.messages.push(Message::new(Role::Tool, "result"));
         with_tool.messages[0] = Message::with_tool_calls(
             "",
-            vec![ToolCall { id: "call-1".into(), name: "read_file".into(), arguments: r#"{"path":"README.md"}"#.into() }],
+            vec![ToolCall {
+                id: "call-1".into(),
+                name: "read_file".into(),
+                arguments: r#"{"path":"README.md"}"#.into(),
+            }],
         );
-        with_tool.messages.push(Message::tool_result("call-1", "read_file", "contents"));
+        with_tool
+            .messages
+            .push(Message::tool_result("call-1", "read_file", "contents"));
         let body = build_body(&provider(), &with_tool).unwrap();
         let messages = body["messages"].as_array().unwrap();
         assert_eq!(messages[1]["tool_calls"][0]["id"], "call-1");
