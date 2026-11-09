@@ -185,7 +185,9 @@ fn roots(config: &Config, key: &str, default: &[&str]) -> Vec<PathBuf> {
             } else {
                 cwd.join(raw)
             };
-            path.canonicalize().ok()
+            path.canonicalize()
+                .ok()
+                .or_else(|| canonical_candidate(&path).ok())
         })
         .collect()
 }
