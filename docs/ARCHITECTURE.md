@@ -31,10 +31,10 @@ The command line takes its input and output as parameters (`Io`), so a whole ses
 | Crate | Role | State |
 | --- | --- | --- |
 | `marelle-core` | Messages, roles, sessions | Basic types |
-| `marelle-config` | Layered configuration with provenance, typed getters, secret redaction | Defaults, environment, flags. Files next |
+| `marelle-config` | Layered configuration with provenance, typed getters, secret redaction | Defaults, global and project TOML files, environment, flags |
 | `marelle-i18n` | Message catalogs (en, ru, fr, uk) | Working |
 | `marelle-providers` | Provider settings, presets, the HTTP client, both wire protocols | OpenAI-compatible and Anthropic, streaming |
-| `marelle-cli` | The `marelle` command | `chat`, `providers`, `config show`, `config explain` |
+| `marelle-cli` | The `marelle` command | `chat`, `providers`, `config show/get/set/unset/schema/path` |
 | `marelle-testkit` | A mock HTTP server for tests (not published) | Used by the provider and CLI tests |
 
 Two protocols cover the vendors we know of: OpenAI-compatible endpoints (OpenAI, OpenRouter, Ollama, Z.ai, Zhipu and others) and the Anthropic Messages API. Support for another vendor goes through whichever of the two its API matches, and that has to be checked per vendor.
@@ -58,8 +58,8 @@ Two protocols cover the vendors we know of: OpenAI-compatible endpoints (OpenAI,
 ## Roadmap
 
 1. **Talk.** HTTP adapters for both protocols and a streaming `marelle chat`. *Done.*
-2. **Settings and look.** TOML files, global and per project, with `config set`, `get` and `unset`, and a schema that describes every key (type, default, allowed values). A themed interface: banner, information panel, status line, framed answers, spinner, built to adapt to narrow phone screens. The default theme is wisteria purple, and every colour role can be set as HEX. Line editing and history.
-3. **Many models.** Model aliases, asking several models in parallel and comparing their answers, fallback chains, roles per task, and a judge model that merges answers.
+2. **Settings and look.** TOML files, global and per project, with `config set`, `get` and `unset`, and a schema that describes every key (type, default, allowed values). A themed interface: banner, information panel, framed answers, spinner, built to adapt to narrow phone screens. The default theme is wisteria purple, and every colour role can be set as HEX. *Done.*
+3. **Many models.** Model aliases, asking several models in parallel and comparing their answers, fallback chains, and a judge model that merges them. *Done.*
 4. **Act.** The tool loop, built-in tools (files, shell, fetch) and a permission policy: allow, ask or deny by path and command.
 5. **Remember.** Sessions and memory in SQLite.
 6. **Extend.** An MCP client, a plugin protocol and skills.

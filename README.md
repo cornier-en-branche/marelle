@@ -113,8 +113,8 @@ The interface speaks English, Russian, French and Ukrainian. Choose with `--lang
 ## Roadmap
 
 1. **Talk.** Streaming chat with OpenAI-compatible and Anthropic providers. *Done.*
-2. **Settings and look.** TOML setting files, global and per project, with `config set`, `get` and `unset` and a description for every key. A themed interface in the spirit of [Hermes Agent](https://github.com/NousResearch/hermes-agent): banner, status line, framed answers, spinner, in wisteria purple by default with any colour settable as HEX.
-3. **Many models.** Model aliases, asking several models at once and comparing the answers, fallback chains.
+2. **Settings and look.** TOML setting files, global and per project, with `config set`, `get` and `unset` and a description for every key. A themed interface in the spirit of [Hermes Agent](https://github.com/NousResearch/hermes-agent): banner, information panel, framed answers, spinner, in wisteria purple by default with any colour settable as HEX. *Done.*
+3. **Many models.** Model aliases, asking several models at once and comparing the answers, fallback chains, and a judge model that merges them. *Done.*
 4. **Act.** A tool loop, built-in tools and a permission policy: allow, ask or deny.
 5. **Remember.** Sessions and memory.
 6. **Extend.** MCP, plugins and skills.
@@ -124,10 +124,9 @@ The reasoning behind the design is in [docs/ARCHITECTURE.md](docs/ARCHITECTURE.m
 
 ## Known limits
 
-- Settings come from the environment and flags only.
 - The interactive session has no line editing or history beyond what the terminal gives.
 - Ctrl-C ends the program, not just the current answer.
-- One model per session, and no tools yet.
+- Tools and the agent loop are not there yet (Act is next).
 
 ## Development
 
