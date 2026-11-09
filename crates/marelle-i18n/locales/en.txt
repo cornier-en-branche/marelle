@@ -6,7 +6,7 @@ app.tagline = A configurable AI agent for your terminal
 
 # --- help ---
 help.usage = Usage
-help.usage.line = marelle [--lang <code>] <command> [options]
+help.usage.line = marelle [--lang <code>] [chat] [options] [prompt]
 help.commands = Commands
 help.cmd.chat = Talk to a model: one question, a pipe, or an interactive session
 help.cmd.providers = List providers and where their API keys come from
@@ -29,7 +29,7 @@ help.opt.lang = Interface language: en, ru, fr, uk
 help.examples = Examples
 help.example.ask = Ask one question
 help.example.pipe = Send a command's output along with a question ("-" stands for stdin)
-help.example.repl = Start an interactive session
+help.example.repl = Launch the interactive terminal chat with `marelle` or `marelle --tui`
 help.env = Every setting can also come from the environment: MARELLE_CHAT__MODEL=zai/MODEL sets chat.model.
 help.exit_codes = Exit codes: 0 success, 1 provider or network error, 2 usage or configuration error.
 
