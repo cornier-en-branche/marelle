@@ -6,7 +6,7 @@ app.tagline = Настраиваемый ИИ-агент для вашего т�
 
 # --- справка ---
 help.usage = Использование
-help.usage.line = marelle [--lang <код>] <команда> [параметры]
+help.usage.line = marelle [--lang <code>] [chat] [параметры] [запрос]
 help.commands = Команды
 help.cmd.chat = Разговор с моделью: один вопрос, конвейер или интерактивный сеанс
 help.cmd.providers = Список провайдеров и откуда берутся их API-ключи
@@ -29,7 +29,7 @@ help.opt.lang = Язык интерфейса: en, ru, fr, uk
 help.examples = Примеры
 help.example.ask = Задать один вопрос
 help.example.pipe = Передать вывод команды вместе с вопросом («-» означает stdin)
-help.example.repl = Запустить интерактивный сеанс
+help.example.repl = Запустить интерактивный чат командой `marelle` или `marelle --tui`
 help.env = Любую настройку можно задать и через окружение: MARELLE_CHAT__MODEL=zai/MODEL задаёт chat.model.
 help.exit_codes = Коды выхода: 0 — успех, 1 — ошибка провайдера или сети, 2 — ошибка в вызове или в настройках.
 
