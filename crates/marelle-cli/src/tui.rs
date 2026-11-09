@@ -137,11 +137,13 @@ impl Tui {
 
     pub(crate) fn append_answer(&mut self, bytes: &[u8]) -> io::Result<()> {
         let text = String::from_utf8_lossy(bytes);
-        if let Some(last) = self.messages.last_mut() {
-            if last.kind == MessageKind::Assistant {
+        if self
+            .messages
+            .last()
+            .is_some_and(|message| message.kind == MessageKind::Assistant)
+        {
+            if let Some(last) = self.messages.last_mut() {
                 last.text.push_str(&text);
-            } else {
-                self.push_message(MessageKind::Assistant, text.into_owned());
             }
         } else {
             self.push_message(MessageKind::Assistant, text.into_owned());
