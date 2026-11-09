@@ -652,6 +652,21 @@ mod tests {
     }
 
     #[test]
+    fn write_file_can_create_nested_paths_inside_an_allowed_root() {
+        let dir = std::env::temp_dir().join(format!("marelle-tools-nested-{}", std::process::id()));
+        let _ = fs::remove_dir_all(&dir);
+        fs::create_dir_all(&dir).unwrap();
+        let mut config = Config::new();
+        config.set(Layer::Default, "permissions.allowed_paths", format!("[\"{}\"]", dir.display()));
+        config.set(Layer::Default, "permissions.denied_paths", "[]");
+        let target = dir.join("new").join("nested").join("file.txt");
+        let args = json!({"path": target.to_string_lossy(), "content": "created"});
+        write_file(&args, &config).unwrap();
+        assert_eq!(fs::read_to_string(&target).unwrap(), "created");
+        fs::remove_dir_all(&dir).unwrap();
+    }
+
+    #[test]
     fn file_edit_requires_a_unique_match_by_default() {
         let dir = std::env::temp_dir().join(format!("marelle-tools-{}", std::process::id()));
         let _ = fs::remove_dir_all(&dir);
