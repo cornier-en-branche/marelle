@@ -931,6 +931,8 @@ fn command_hint(input: &str) -> String {
         "/quit",
         "/session",
         "/system",
+        "/tools",
+        "/skills",
     ]
     .into_iter()
     .filter(|candidate| candidate[1..].starts_with(command))
