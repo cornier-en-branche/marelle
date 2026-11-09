@@ -1276,11 +1276,13 @@ fn model_for_provider(
     if let Some(alias) = alias(config, reference)? {
         return Ok(alias.model);
     }
-    if let Some((provider, model)) = reference.split_once('/')
-        && !model.is_empty()
-        && current_provider.is_some_and(|current| normalize_name(provider) == normalize_name(current))
-    {
-        return Ok(model.to_owned());
+    if let Some((provider, model)) = reference.split_once('/') {
+        if !model.is_empty()
+            && current_provider
+                .is_some_and(|current| normalize_name(provider) == normalize_name(current))
+        {
+            return Ok(model.to_owned());
+        }
     }
     Ok(reference.to_owned())
 }
