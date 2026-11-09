@@ -809,7 +809,8 @@ pub(crate) fn run(
     };
     if args.continue_session && !restored {
         return Failure::usage(
-            "No saved Marelle session was found. Start a chat first, or run marelle chat.".to_owned(),
+            "No saved Marelle session was found. Start a chat first, or run marelle chat."
+                .to_owned(),
         )
         .print(io.err);
     }
@@ -975,9 +976,15 @@ fn single_turn(
                     return failure.print(io.err);
                 }
                 failure.print(io.err)?;
-                writeln!(io.err, "{}", tr_with(locale, "chat.fallback.try", &[
-                    ("model", reference), ("next", &attempts[index + 1])
-                ]))?;
+                writeln!(
+                    io.err,
+                    "{}",
+                    tr_with(
+                        locale,
+                        "chat.fallback.try",
+                        &[("model", reference), ("next", &attempts[index + 1])]
+                    )
+                )?;
                 continue;
             }
         };
@@ -1062,7 +1069,11 @@ fn single_turn(
                         conversation.session.pop();
                     }
                     if framed {
-                        writeln!(io.err, "{}", theme::rule(&plan.ui.theme, plan.ui.width, io.color))?;
+                        writeln!(
+                            io.err,
+                            "{}",
+                            theme::rule(&plan.ui.theme, plan.ui.width, io.color)
+                        )?;
                     }
                     return failure.print(io.err);
                 }
@@ -1146,7 +1157,11 @@ fn single_turn(
                     };
                     flushed?;
                     if framed {
-                        writeln!(io.err, "{}", theme::rule(&plan.ui.theme, plan.ui.width, io.color))?;
+                        writeln!(
+                            io.err,
+                            "{}",
+                            theme::rule(&plan.ui.theme, plan.ui.width, io.color)
+                        )?;
                     }
                     answered(plan, conversation, outcome, locale, io)?;
                     return Ok(OK);
