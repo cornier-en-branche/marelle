@@ -2253,6 +2253,92 @@ mod tests {
     }
 
     #[test]
+    fn saved_sessions_round_trip_tool_calls_and_session_settings() {
+        let mut session = Session::new();
+        session.push(Message::new(Role::User, "inspect this project"));
+        session.push(Message::with_tool_calls(
+            "",
+            vec![ToolCall {
+                id: "call-1".to_owned(),
+                name: "read_file".to_owned(),
+                arguments: r#"{\"path\":\"README.md\"}"#.to_owned(),
+            }],
+        ));
+        session.push(Message::tool_result("call-1", "read_file", "project readme"));
+
+        let saved = SavedSession {
+            name: "Project".to_owned(),
+            session,
+            model: "glm-5.2".to_owned(),
+            provider_override: Some("zai".to_owned()),
+            compare: Vec::new(),
+            fallback: vec!["openai/backup".to_owned()],
+            judge: None,
+            system: SystemChoice::Text("Be precise".to_owned()),
+        };
+        let restored = decode_saved_session(&encode_saved_session(&saved)).unwrap();
+        assert_eq!(restored.name, saved.name);
+        assert_eq!(restored.session.messages(), saved.session.messages());
+        assert_eq!(restored.model, saved.model);
+        assert_eq!(restored.provider_override, saved.provider_override);
+        assert_eq!(restored.fallback, saved.fallback);
+        match restored.system {
+            SystemChoice::Text(text) => assert_eq!(text, "Be precise"),
+            _ => panic!("system prompt was not restored"),
+        }
+    }
+
+    #[test]
+    fn persistent_store_restores_the_last_conversation() {
+        let dir = std::env::temp_dir().join(format!("marelle-session-store-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        let env = vec![
+            ("HOME".to_owned(), dir.to_string_lossy().into_owned()),
+        ];
+        let mut config = Config::new();
+        config.set(marelle_config::Layer::Default, "agent.persist_sessions", "true");
+        let mut original = Conversation {
+            session: Session::new(),
+            session_name: "Work".to_owned(),
+            saved_sessions: Vec::new(),
+            next_session_id: 4,
+            model: "zai/glm-5.2".to_owned(),
+            provider_override: None,
+            compare: Vec::new(),
+            fallback: Vec::new(),
+            judge: None,
+            system: SystemChoice::Default,
+        };
+        original.session.push(Message::new(Role::User, "remember this"));
+        persist_session_store(&env, &config, &original).unwrap();
+
+        let mut resumed = Conversation {
+            session: Session::new(),
+            session_name: "Chat 1".to_owned(),
+            saved_sessions: Vec::new(),
+            next_session_id: 2,
+            model: String::new(),
+            provider_override: None,
+            compare: Vec::new(),
+            fallback: Vec::new(),
+            judge: None,
+            system: SystemChoice::Default,
+        };
+        assert!(restore_session_store(&env, &config, &mut resumed, true).unwrap());
+        assert_eq!(resumed.session_name, "Work");
+        assert_eq!(resumed.model, "zai/glm-5.2");
+        assert_eq!(resumed.session.messages()[0].content, "remember this");
+        assert_eq!(resumed.next_session_id, 4);
+
+        let store = session_store_path(&env).unwrap();
+        let text = std::fs::read_to_string(store).unwrap();
+        assert!(!text.contains("api_key"));
+        assert!(!text.contains("ZAI_API_KEY"));
+        std::fs::remove_dir_all(&dir).unwrap();
+    }
+
+    #[test]
     fn the_interface_follows_the_settings() {
         use marelle_config::Layer;
 
