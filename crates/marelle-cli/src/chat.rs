@@ -1167,6 +1167,8 @@ fn repl_tui(
                     .is_some_and(|(name, rest)| name == "model" && rest.is_empty());
                 let provider_picker = slash_command(&line)
                     .is_some_and(|(name, rest)| name == "provider" && rest.is_empty());
+                let session_picker = slash_command(&line)
+                    .is_some_and(|(name, rest)| name == "session" && rest.is_empty());
                 let line = if model_picker {
                     let items = model_selector_items(plan, &conversation);
                     match tui.select("Choose a model", &items)? {
@@ -1177,6 +1179,12 @@ fn repl_tui(
                     let items = provider_selector_items(plan, &conversation);
                     match tui.select("Choose a provider", &items)? {
                         Some(value) => format!("/provider {value}"),
+                        None => continue,
+                    }
+                } else if session_picker {
+                    let items = session_selector_items(&conversation);
+                    match tui.select("Switch conversation", &items)? {
+                        Some(value) => format!("/session {value}"),
                         None => continue,
                     }
                 } else {
@@ -1205,8 +1213,10 @@ fn repl_tui(
                         )?
                     };
 
-                    if name == "clear" {
+                    if name == "clear" || (name == "session" && rest == "new") {
                         tui.clear_messages()?;
+                    } else if name == "session" {
+                        tui.load_history(conversation.session.messages())?;
                     }
                     let (provider, model) = tui_model_labels(plan, &conversation, locale);
                     tui.set_model(provider, model)?;
@@ -1287,9 +1297,19 @@ fn command_palette_items() -> Vec<SelectorItem> {
             "Set, inspect, or disable the system prompt",
         ),
         (
+            "session",
+            "Switch conversation",
+            "Return to an in-memory conversation",
+        ),
+        (
+            "session new",
+            "New conversation",
+            "Create a fresh in-memory conversation",
+        ),
+        (
             "clear",
             "Clear conversation",
-            "Start with an empty transcript",
+            "Remove messages from the current conversation",
         ),
         ("help", "Help", "Show available chat commands"),
         ("exit", "Exit", "Leave the interactive session"),
@@ -1355,6 +1375,20 @@ fn model_selector_items(plan: &Plan, conversation: &Conversation) -> Vec<Selecto
             },
         );
     }
+    items
+}
+
+fn session_selector_items(conversation: &Conversation) -> Vec<SelectorItem> {
+    let mut items = vec![SelectorItem {
+        value: conversation.session_name.clone(),
+        label: format!("{}  (current)", conversation.session_name),
+        detail: format!("{} messages", conversation.session.len()),
+    }];
+    items.extend(conversation.saved_sessions.iter().map(|session| SelectorItem {
+        value: session.name.clone(),
+        label: session.name.clone(),
+        detail: format!("{} messages", session.session.len()),
+    }));
     items
 }
 
@@ -1579,6 +1613,20 @@ fn command(
                 })
                 .unwrap_or("not selected");
             writeln!(io.err, "Current provider: {current}")?;
+        }
+        "session" if rest.is_empty() => {
+            writeln!(io.err, "Conversations: {}", conversation.session_names().join(", "))?;
+        }
+        "session" if rest == "new" => {
+            conversation.new_session();
+            writeln!(io.err, "Created {}", conversation.session_name)?;
+        }
+        "session" => {
+            if conversation.switch_session(rest) {
+                writeln!(io.err, "Switched to {}", conversation.session_name)?;
+            } else {
+                writeln!(io.err, "No conversation named {rest}")?;
+            }
         }
         "provider" if rest == "off" => {
             conversation.provider_override = None;
