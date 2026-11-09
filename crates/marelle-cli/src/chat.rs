@@ -1251,8 +1251,7 @@ fn model_selector_items(plan: &Plan, conversation: &Conversation) -> Vec<Selecto
         });
     }
 
-    if !conversation.model.is_empty()
-        && !items.iter().any(|item| item.value == conversation.model)
+    if !conversation.model.is_empty() && !items.iter().any(|item| item.value == conversation.model)
     {
         items.insert(
             0,
