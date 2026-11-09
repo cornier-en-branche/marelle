@@ -164,7 +164,8 @@ impl Tui {
                         KeyCode::End => selected = items.len() - 1,
                         KeyCode::PageUp => {
                             let (_, height) = terminal::size().unwrap_or((80, 24));
-                            selected = selected.saturating_sub(usize::from(height).saturating_sub(8).max(1));
+                            selected = selected
+                                .saturating_sub(usize::from(height).saturating_sub(8).max(1));
                         }
                         KeyCode::PageDown => {
                             let (_, height) = terminal::size().unwrap_or((80, 24));
@@ -228,13 +229,11 @@ impl Tui {
             )?;
         }
 
-        let footer = format!("{} item(s)  ·  Esc returns to the conversation", items.len());
-        self.draw_line(
-            height.saturating_sub(2),
-            &footer,
-            ThemeRole::Dim,
-            width,
-        )?;
+        let footer = format!(
+            "{} item(s)  ·  Esc returns to the conversation",
+            items.len()
+        );
+        self.draw_line(height.saturating_sub(2), &footer, ThemeRole::Dim, width)?;
         self.output.flush()
     }
 
