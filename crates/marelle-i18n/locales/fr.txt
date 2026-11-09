@@ -15,6 +15,8 @@ help.cmd.help = Afficher cette aide
 help.cmd.version = Afficher la version
 help.chat_options = Options de chat
 help.opt.provider = Identifiant du fournisseur (voir : marelle providers)
+help.opt.query = Envoyer une demande puis quitter
+help.opt.continue = Reprendre la dernière conversation enregistrée
 help.opt.model = Nom du modèle, ou fournisseur/modèle si aucun fournisseur n'est choisi
 help.opt.system = Prompt système
 help.opt.max_tokens = Limiter la longueur de la réponse, en jetons
@@ -64,7 +66,7 @@ chat.judge.header = juge : {label}
 
 # --- session interactive ---
 repl.banner = {provider} / {model} - /help liste les commandes, /exit quitte
-repl.help = Commandes : /help  /clear  /model [nom]  /provider [id|off]  /session [new|nom]  /compare [modèles|off]  /fallback [modèles|off]  /judge [modèle|off]  /system [texte|off]  /exit  ·  Ctrl+P ouvre la palette de commandes
+repl.help = Commandes : /help  /clear  /model [nom]  /provider [id|off]  /session [new|nom]  /compare [modèles|off]  /fallback [modèles|off]  /judge [modèle|off]  /system [texte|off]  /tools  /skills  /exit  ·  Ctrl+P ouvre la palette
 repl.cleared = Conversation effacée.
 repl.model = Modèle : {model}
 repl.model_set = Modèle changé pour {model}.
