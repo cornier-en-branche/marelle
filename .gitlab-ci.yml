@@ -1,0 +1,44 @@
+stages:
+  - verify
+  - build
+
+variables:
+  CARGO_TERM_COLOR: always
+  CARGO_INCREMENTAL: "0"
+  CARGO_HOME: "$CI_PROJECT_DIR/.cargo"
+
+cache:
+  key:
+    files:
+      - Cargo.lock
+  paths:
+    - .cargo/registry/index/
+    - .cargo/registry/cache/
+    - .cargo/git/
+    - target/
+
+stable:
+  stage: verify
+  image: rust:latest
+  before_script:
+    - rustup component add rustfmt clippy
+  script:
+    - cargo fmt --all -- --check
+    - cargo clippy --workspace --all-targets --locked -- -D warnings
+    - cargo test --workspace --locked
+
+msrv:
+  stage: verify
+  image: rust:1.85
+  script:
+    - cargo check --workspace --all-targets --locked
+
+release:
+  stage: build
+  image: rust:latest
+  script:
+    - cargo build --release --locked -p marelle-cli
+  artifacts:
+    expire_in: 7 days
+    paths:
+      - target/release/marelle
