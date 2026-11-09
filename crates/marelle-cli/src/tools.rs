@@ -774,7 +774,11 @@ mod tests {
         let path = dir.join("sample.txt");
         fs::write(&path, "one one").unwrap();
         let mut config = Config::new();
-        config.set(Layer::Default, "permissions.allowed_paths", format!("[\"{}\"]", dir.display()));
+        config.set(
+            Layer::Default,
+            "permissions.allowed_paths",
+            format!("[\"{}\"]", dir.display()),
+        );
         config.set(Layer::Default, "permissions.denied_paths", "[]");
         let args = json!({"path": path.to_string_lossy(), "old": "one", "new": "two"});
         assert!(
