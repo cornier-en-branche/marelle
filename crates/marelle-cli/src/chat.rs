@@ -1028,12 +1028,7 @@ fn repl(
             |target| target.provider_name.clone(),
         );
         let model = conversation.display_model(plan);
-        if let Ok(mut tui) = Tui::enter(
-            plan.ui.theme.clone(),
-            provider,
-            model,
-            io.color,
-        ) {
+        if let Ok(mut tui) = Tui::enter(plan.ui.theme.clone(), provider, model, io.color) {
             return repl_tui(runtime, plan, conversation, locale, env_vars, io, &mut tui);
         }
     }
@@ -1132,11 +1127,7 @@ fn repl_tui(
     }
 }
 
-fn tui_model_labels(
-    plan: &Plan,
-    conversation: &Conversation,
-    locale: Locale,
-) -> (String, String) {
+fn tui_model_labels(plan: &Plan, conversation: &Conversation, locale: Locale) -> (String, String) {
     let provider = if conversation.compare.is_empty() {
         plan.primary.as_ref().map_or_else(
             || tr(locale, "ui.compare"),
