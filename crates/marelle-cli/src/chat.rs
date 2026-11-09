@@ -648,7 +648,14 @@ fn single_turn(
             }
         };
 
-        let system = conversation.system.resolve(Some(&target), plan.chat.system.as_deref());
+        let mut system = conversation.system.resolve(Some(&target), plan.chat.system.as_deref());
+        let project_context = crate::tools::project_context();
+        if !project_context.is_empty() {
+            system = Some(match system {
+                Some(system) if !system.trim().is_empty() => format!("{system}\n\nProject instructions:\n{project_context}"),
+                _ => format!("Project instructions:\n{project_context}"),
+            });
+        }
         let mut tool_rounds = 0usize;
         let mut any_tool_call = false;
 
@@ -676,6 +683,19 @@ fn single_turn(
                 events.push(event);
                 ControlFlow::Continue(())
             }));
+            let waiting = spinner && !any_tool_call;
+            let needs_clear = match &result {
+                Err(_) => true,
+                Ok(outcome) => !outcome.tool_calls.is_empty(),
+            };
+            if waiting && needs_clear {
+                if io.color {
+                    write!(io.err, "\r\x1b[2K")?;
+                } else {
+                    writeln!(io.err)?;
+                }
+                io.err.flush()?;
+            }
 
             match result {
                 Err(error) => {
@@ -752,7 +772,7 @@ fn single_turn(
                     }
                 }
                 Ok(outcome) => {
-                    let (flushed, wrote) = {
+                    let flushed = {
                         let mut printer = Printer::new(
                             &mut *io.out, &mut *io.err, io.color, plan.chat.show_reasoning,
                         )
@@ -761,11 +781,9 @@ fn single_turn(
                         for event in events {
                             let _ = printer.event(event);
                         }
-                        let wrote = printer.wrote;
-                        (printer.finish(), wrote)
+                        printer.finish()
                     };
                     flushed?;
-                    let _ = wrote;
                     if framed {
                         writeln!(io.err, "{}", theme::rule(&plan.ui.theme, plan.ui.width, io.color))?;
                     }
@@ -994,8 +1012,11 @@ fn answered(
     io: &mut Io<'_>,
 ) -> io::Result<()> {
     if outcome.text.is_empty() {
-        // Nothing to keep. Dropping the question keeps the roles alternating.
-        conversation.session.pop();
+        // Only remove an unanswered user prompt. Tool-call history and its
+        // results must remain available for the next turn.
+        if conversation.session.messages().last().is_some_and(|message| message.role == Role::User) {
+            conversation.session.pop();
+        }
     } else {
         conversation
             .session
