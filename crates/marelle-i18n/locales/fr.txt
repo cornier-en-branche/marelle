@@ -57,10 +57,14 @@ chat.usage.in = {n} en entrée
 chat.usage.out = {n} en sortie
 chat.usage.cached = {n} en cache
 chat.usage.reasoning = {n} de raisonnement
+chat.fallback.try = {model} a échoué. Essai de {next}...
+chat.compare.header = --- {label} ---
+chat.compare.failed = Un modèle comparé n'a pas pu démarrer : {reason}
+chat.judge.header = juge : {label}
 
 # --- session interactive ---
 repl.banner = {provider} / {model} - /help liste les commandes, /exit quitte
-repl.help = Commandes : /help  /clear  /model [nom]  /system [texte|off]  /exit
+repl.help = Commandes : /help  /clear  /model [nom]  /compare [modèles|off]  /fallback [modèles|off]  /judge [modèle|off]  /system [texte|off]  /exit
 repl.cleared = Conversation effacée.
 repl.model = Modèle : {model}
 repl.model_set = Modèle changé pour {model}.
@@ -69,11 +73,24 @@ repl.system_none = Aucun prompt système.
 repl.system_set = Prompt système défini.
 repl.system_cleared = Prompt système retiré.
 repl.unknown = Commande {name} inconnue. Tapez /help.
+repl.compare = Comparaison : {models}
+repl.compare_none = La comparaison est désactivée.
+repl.compare_set = Comparaison : {models}.
+repl.compare_cleared = Comparaison désactivée.
+repl.fallback = Replis : {models}
+repl.fallback_none = Aucun modèle de repli.
+repl.fallback_set = Replis : {models}.
+repl.fallback_cleared = Replis retirés.
+repl.judge = Juge : {model}
+repl.judge_none = Aucun modèle juge.
+repl.judge_set = Juge : {model}.
+repl.judge_cleared = Juge retiré.
 
 # --- l'interface ---
 ui.tagline = une marelle pour votre terminal
 ui.provider = fournisseur
 ui.model = modèle
+ui.compare = comparaison
 ui.system = système
 ui.thinking = en attente du premier jeton...
 

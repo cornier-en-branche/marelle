@@ -57,10 +57,14 @@ chat.usage.in = {n} на вході
 chat.usage.out = {n} на виході
 chat.usage.cached = {n} із кешу
 chat.usage.reasoning = {n} на міркування
+chat.fallback.try = {model} не впоралася. Пробую {next}...
+chat.compare.header = --- {label} ---
+chat.compare.failed = Не вдалося запустити порівняння: {reason}
+chat.judge.header = суддя: {label}
 
 # --- інтерактивний сеанс ---
 repl.banner = {provider} / {model} - /help покаже команди, /exit завершить сеанс
-repl.help = Команди: /help  /clear  /model [назва]  /system [текст|off]  /exit
+repl.help = Команди: /help  /clear  /model [назва]  /compare [моделі|off]  /fallback [моделі|off]  /judge [модель|off]  /system [текст|off]  /exit
 repl.cleared = Розмову очищено.
 repl.model = Модель: {model}
 repl.model_set = Модель переключено на {model}.
@@ -69,11 +73,24 @@ repl.system_none = Системного промпту немає.
 repl.system_set = Системний промпт задано.
 repl.system_cleared = Системний промпт прибрано.
 repl.unknown = Невідома команда {name}. Наберіть /help.
+repl.compare = Порівняння: {models}
+repl.compare_none = Порівняння вимкнено.
+repl.compare_set = Порівняння: {models}.
+repl.compare_cleared = Порівняння вимкнено.
+repl.fallback = Запасні: {models}
+repl.fallback_none = Запасних моделей немає.
+repl.fallback_set = Запасні: {models}.
+repl.fallback_cleared = Запасні моделі прибрано.
+repl.judge = Суддя: {model}
+repl.judge_none = Суддю не вибрано.
+repl.judge_set = Суддя: {model}.
+repl.judge_cleared = Суддю прибрано.
 
 # --- інтерфейс ---
 ui.tagline = класики для вашого термінала
 ui.provider = провайдер
 ui.model = модель
+ui.compare = порівняння
 ui.system = система
 ui.thinking = чекаю на перший токен...
 

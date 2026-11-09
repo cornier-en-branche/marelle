@@ -18,6 +18,7 @@ use marelle_providers::{
     StreamEvent, Usage, normalize_name, provider_names,
 };
 use tokio::runtime::Runtime;
+use tokio::task::JoinSet;
 
 use crate::Io;
 use crate::VERSION;
@@ -86,16 +87,161 @@ impl UiSettings {
     }
 }
 
-/// Everything decided before the first byte is sent.
-struct Plan {
+/// One model, with its own client and the settings that belong to it.
+struct Target {
+    /// How the model is named in a setting or on the command line.
+    reference: String,
+    /// What the user sees: the alias, or `provider/model`.
+    label: String,
     provider_name: String,
     model: String,
     client: Client,
+    system: Option<String>,
+    max_tokens: Option<u64>,
+    temperature: Option<f64>,
+}
+
+/// The fields a `models.<alias>.*` table may override.
+struct Alias {
+    provider: Option<String>,
+    model: String,
+    system: Option<String>,
+    max_tokens: Option<u64>,
+    temperature: Option<f64>,
+}
+
+/// Reads a model alias, if `name` names one.
+fn alias(config: &Config, name: &str) -> Result<Option<Alias>, SettingError> {
+    let key = |field: &str| format!("models.{name}.{field}");
+    let Some(model) = config
+        .get(&key("model"))
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+        .map(str::to_owned)
+    else {
+        return Ok(None);
+    };
+    let max_tokens = match config.get_u64(&key("max_tokens"))? {
+        Some(0) => {
+            return Err(SettingError::new(
+                key("max_tokens"),
+                Expected::PositiveWholeNumber,
+            ));
+        }
+        other => other,
+    };
+    Ok(Some(Alias {
+        provider: config
+            .get(&key("provider"))
+            .map(str::trim)
+            .filter(|value| !value.is_empty())
+            .map(str::to_owned),
+        model,
+        system: config
+            .get(&key("system"))
+            .filter(|text| !text.trim().is_empty())
+            .map(str::to_owned),
+        max_tokens,
+        temperature: config.get_f64(&key("temperature"))?,
+    }))
+}
+
+/// Turns a name into a client. The name may be an alias, `provider/model`,
+/// or a bare model used with the chosen provider.
+fn resolve_target(
+    config: &Config,
+    locale: Locale,
+    lookup: &impl Fn(&str) -> Option<String>,
+    reference: &str,
+    fallback_provider: Option<&str>,
+    chat: &ChatSettings,
+) -> Result<Target, Failure> {
+    let reference = reference.trim();
+    if reference.is_empty() {
+        return Err(Failure::usage(tr(locale, "chat.no_model")));
+    }
+    let known = provider_names(config);
+    let fail = |error: ProviderError| provider_failure(locale, &error, &known);
+    let setting = |error: SettingError| setting_failure(locale, &error);
+
+    let alias = alias(config, reference).map_err(setting)?;
+    let raw_model = alias
+        .as_ref()
+        .map_or_else(|| reference.to_owned(), |alias| alias.model.clone());
+    let explicit_provider = alias
+        .as_ref()
+        .and_then(|alias| alias.provider.clone())
+        .or_else(|| fallback_provider.map(str::to_owned))
+        .or_else(|| {
+            config
+                .get("chat.provider")
+                .map(str::trim)
+                .filter(|value| !value.is_empty())
+                .map(str::to_owned)
+        });
+    let (provider_name, model) = match explicit_provider {
+        Some(provider) => {
+            let provider = normalize_name(&provider);
+            // `mock/model` stays `model` once `mock` is the chosen provider,
+            // but OpenRouter's `anthropic/claude-...` keeps its slash.
+            let model = match raw_model.split_once('/') {
+                Some((prefix, rest)) if !rest.is_empty() && normalize_name(prefix) == provider => {
+                    rest.to_owned()
+                }
+                _ => raw_model,
+            };
+            (provider, model)
+        }
+        None => match raw_model.split_once('/') {
+            Some((prefix, rest)) if !rest.is_empty() && known.contains(&normalize_name(prefix)) => {
+                (normalize_name(prefix), rest.to_owned())
+            }
+            _ => return Err(Failure::usage(tr(locale, "chat.no_provider"))),
+        },
+    };
+
+    let provider = ProviderConfig::from_config(config, &provider_name).map_err(fail)?;
+    let key = provider.api_key_with(lookup).map_err(fail)?;
+    let network = NetworkSettings::from_config(config, lookup).map_err(fail)?;
+    let client = Client::new(&provider, key, &network).map_err(fail)?;
+    Ok(Target {
+        reference: reference.to_owned(),
+        label: if alias.is_some() {
+            reference.to_owned()
+        } else {
+            format!("{provider_name}/{model}")
+        },
+        provider_name,
+        model,
+        client,
+        system: alias
+            .as_ref()
+            .and_then(|alias| alias.system.clone())
+            .or_else(|| chat.system.clone()),
+        max_tokens: alias
+            .as_ref()
+            .and_then(|alias| alias.max_tokens)
+            .or(chat.max_tokens),
+        temperature: alias
+            .as_ref()
+            .and_then(|alias| alias.temperature)
+            .or(chat.temperature),
+    })
+}
+
+/// Everything decided before the first byte is sent.
+struct Plan {
+    config: Config,
+    /// The model chosen with `chat.model`, absent when only comparing.
+    primary: Option<Target>,
+    compare: Vec<String>,
+    fallback: Vec<String>,
+    judge: Option<String>,
     chat: ChatSettings,
     ui: UiSettings,
 }
 
-/// Chooses the provider and the model, checks the settings, finds the key.
+/// Chooses the providers and the models, checks the settings, finds the keys.
 ///
 /// A model may be written `provider/model`, but only when no provider is
 /// chosen otherwise. That keeps names such as OpenRouter's
@@ -107,46 +253,90 @@ fn plan(
 ) -> Result<Plan, Failure> {
     let known = provider_names(config);
     let fail = |error: ProviderError| provider_failure(locale, &error, &known);
-
+    let setting = |error: SettingError| setting_failure(locale, &error);
     let chosen = |key: &str| {
         config
             .get(key)
             .map(str::trim)
             .filter(|value| !value.is_empty())
     };
-    let (provider_name, model) = match (chosen("chat.provider"), chosen("chat.model")) {
-        (Some(provider), Some(model)) => (normalize_name(provider), model.to_owned()),
-        (Some(_), None) => return Err(Failure::usage(tr(locale, "chat.no_model"))),
-        (None, Some(model)) => match model.split_once('/') {
-            Some((prefix, rest)) if !rest.is_empty() && known.contains(&normalize_name(prefix)) => {
-                (normalize_name(prefix), rest.to_owned())
-            }
-            _ => return Err(Failure::usage(tr(locale, "chat.no_provider"))),
-        },
-        (None, None) => return Err(Failure::usage(tr(locale, "chat.no_provider"))),
-    };
 
-    let provider = ProviderConfig::from_config(config, &provider_name).map_err(fail)?;
-    let key = provider.api_key_with(&lookup).map_err(fail)?;
-    let network = NetworkSettings::from_config(config, &lookup).map_err(fail)?;
     let chat = ChatSettings::from_config(config).map_err(fail)?;
-    let ui = UiSettings::from_config(config, lookup("COLUMNS").as_deref())
-        .map_err(|error| setting_failure(locale, &error))?;
-    let client = Client::new(&provider, key, &network).map_err(fail)?;
+    let compare = config
+        .get_list("chat.compare")
+        .map_err(setting)?
+        .unwrap_or_default();
+    let fallback = config
+        .get_list("chat.fallback")
+        .map_err(setting)?
+        .unwrap_or_default();
+    let primary_ref = chosen("chat.model").map(str::to_owned);
+    let primary = match &primary_ref {
+        Some(reference) => Some(resolve_target(
+            config, locale, &lookup, reference, None, &chat,
+        )?),
+        None if !compare.is_empty() => None,
+        None if chosen("chat.provider").is_some() => {
+            return Err(Failure::usage(tr(locale, "chat.no_model")));
+        }
+        None => return Err(Failure::usage(tr(locale, "chat.no_provider"))),
+    };
+    let ui = UiSettings::from_config(config, lookup("COLUMNS").as_deref()).map_err(setting)?;
     Ok(Plan {
-        provider_name,
-        model,
-        client,
+        config: config.clone(),
+        primary,
+        compare,
+        fallback,
+        judge: chosen("chat.judge").map(str::to_owned),
         chat,
         ui,
     })
+}
+
+/// What to send as the system prompt.
+enum SystemChoice {
+    /// Whatever the model's alias chose, or the global setting.
+    Default,
+    /// Nothing.
+    Off,
+    /// This text, whatever the alias says.
+    Text(String),
+}
+
+impl SystemChoice {
+    fn resolve(&self, target: Option<&Target>, global: Option<&str>) -> Option<String> {
+        match self {
+            SystemChoice::Default => target
+                .and_then(|target| target.system.clone())
+                .or_else(|| global.map(str::to_owned)),
+            SystemChoice::Off => None,
+            SystemChoice::Text(text) => Some(text.clone()),
+        }
+    }
 }
 
 /// The conversation so far, and what an interactive session may change.
 struct Conversation {
     session: Session,
     model: String,
-    system: Option<String>,
+    compare: Vec<String>,
+    fallback: Vec<String>,
+    judge: Option<String>,
+    system: SystemChoice,
+}
+
+impl Conversation {
+    /// What to show for the models in play. The launch model loses the
+    /// provider prefix it was written with, as the panel has its own row.
+    fn display_model(&self, plan: &Plan) -> String {
+        if !self.compare.is_empty() {
+            return self.compare.join(", ");
+        }
+        match &plan.primary {
+            Some(target) if target.reference == self.model => target.model.clone(),
+            _ => self.model.clone(),
+        }
+    }
 }
 
 /// Runs the command and returns the exit code.
@@ -191,8 +381,14 @@ pub(crate) fn run(
         .build()?;
     let mut conversation = Conversation {
         session: Session::new(),
-        model: plan.model.clone(),
-        system: plan.chat.system.clone(),
+        model: plan
+            .primary
+            .as_ref()
+            .map_or_else(String::new, |target| target.reference.clone()),
+        compare: plan.compare.clone(),
+        fallback: plan.fallback.clone(),
+        judge: plan.judge.clone(),
+        system: SystemChoice::Default,
     };
     match prompt {
         Some(prompt) => {
@@ -200,9 +396,17 @@ pub(crate) fn run(
                 return Failure::usage(tr(locale, "chat.empty_prompt")).print(io.err);
             }
             conversation.session.push(Message::new(Role::User, prompt));
-            turn(&runtime, &plan, &mut conversation, locale, io, false)
+            turn(
+                &runtime,
+                &plan,
+                &mut conversation,
+                locale,
+                env_vars,
+                io,
+                false,
+            )
         }
-        None => repl(&runtime, &plan, conversation, locale, io),
+        None => repl(&runtime, &plan, conversation, locale, env_vars, io),
     }
 }
 
@@ -243,7 +447,7 @@ fn compose(words: &[String], piped: Option<&str>) -> String {
     parts.join("\n\n")
 }
 
-/// One exchange: send the conversation, print the answer as it arrives.
+/// One exchange. Comparing, when asked for, takes the parallel path.
 ///
 /// The last message of the session is the user's. It stays only if the
 /// model answered, so a failed turn can simply be asked again.
@@ -252,17 +456,40 @@ fn turn(
     plan: &Plan,
     conversation: &mut Conversation,
     locale: Locale,
+    env_vars: &[(String, String)],
     io: &mut Io<'_>,
     interactive: bool,
 ) -> io::Result<u8> {
-    let request = ChatRequest {
-        model: conversation.model.clone(),
-        system: conversation.system.clone(),
-        messages: conversation.session.messages().to_vec(),
-        max_tokens: plan.chat.max_tokens,
-        temperature: plan.chat.temperature,
-        stream: plan.chat.stream,
-    };
+    if conversation.compare.is_empty() {
+        single_turn(
+            runtime,
+            plan,
+            conversation,
+            locale,
+            env_vars,
+            io,
+            interactive,
+        )
+    } else {
+        compare_turn(runtime, plan, conversation, locale, env_vars, io)
+    }
+}
+
+/// Asks one model, falling back down the chain when it fails.
+fn single_turn(
+    runtime: &Runtime,
+    plan: &Plan,
+    conversation: &mut Conversation,
+    locale: Locale,
+    env_vars: &[(String, String)],
+    io: &mut Io<'_>,
+    interactive: bool,
+) -> io::Result<u8> {
+    let mut attempts = Vec::new();
+    if !conversation.model.trim().is_empty() {
+        attempts.push(conversation.model.clone());
+    }
+    attempts.extend(conversation.fallback.iter().cloned());
 
     // A rule above and below the answer, for a session at a terminal. It
     // goes to stderr, so a redirected answer stays exactly the answer.
@@ -275,45 +502,320 @@ fn turn(
         )?;
     }
     let spinner = interactive && plan.ui.spinner && io.color;
-    if spinner {
-        write!(io.err, "{}", tr(locale, "ui.thinking"))?;
-        io.err.flush()?;
+    let provider_hint = plan
+        .primary
+        .as_ref()
+        .map(|target| target.provider_name.clone());
+    let known = provider_names(&plan.config);
+    let messages = conversation.session.messages().to_vec();
+    let lookup = |name: &str| env_lookup(env_vars, name);
+
+    if attempts.is_empty() {
+        let failure = Failure::usage(tr(locale, "chat.no_model"));
+        return failure.print(io.err);
     }
 
-    let (result, flushed) = {
-        let mut printer = Printer::new(
-            &mut *io.out,
-            &mut *io.err,
-            io.color,
-            plan.chat.show_reasoning,
-        )
-        .with_theme(&plan.ui.theme)
-        .with_spinner(spinner);
-        let result = runtime.block_on(
-            plan.client
-                .chat(&request, &mut |event: StreamEvent| printer.event(event)),
-        );
-        (result, printer.finish())
-    };
-    flushed?;
-    if framed {
-        writeln!(
-            io.err,
-            "{}",
-            theme::rule(&plan.ui.theme, plan.ui.width, io.color)
-        )?;
+    for (index, reference) in attempts.iter().enumerate() {
+        let last = index + 1 == attempts.len();
+        let target = match resolve_target(
+            &plan.config,
+            locale,
+            &lookup,
+            reference,
+            provider_hint.as_deref(),
+            &plan.chat,
+        ) {
+            Ok(target) => target,
+            Err(failure) => {
+                if last {
+                    conversation.session.pop();
+                    if framed {
+                        writeln!(
+                            io.err,
+                            "{}",
+                            theme::rule(&plan.ui.theme, plan.ui.width, io.color)
+                        )?;
+                    }
+                    return failure.print(io.err);
+                }
+                failure.print(io.err)?;
+                writeln!(
+                    io.err,
+                    "{}",
+                    tr_with(
+                        locale,
+                        "chat.fallback.try",
+                        &[("model", reference), ("next", &attempts[index + 1])]
+                    )
+                )?;
+                continue;
+            }
+        };
+        let request = ChatRequest {
+            model: target.model.clone(),
+            system: conversation
+                .system
+                .resolve(Some(&target), plan.chat.system.as_deref()),
+            messages: messages.clone(),
+            max_tokens: target.max_tokens,
+            temperature: target.temperature,
+            stream: plan.chat.stream,
+        };
+
+        if spinner {
+            write!(io.err, "{}", tr(locale, "ui.thinking"))?;
+            io.err.flush()?;
+        }
+        let (result, flushed, wrote) = {
+            let mut printer = Printer::new(
+                &mut *io.out,
+                &mut *io.err,
+                io.color,
+                plan.chat.show_reasoning,
+            )
+            .with_theme(&plan.ui.theme)
+            .with_spinner(spinner);
+            let result = runtime.block_on(
+                target
+                    .client
+                    .chat(&request, &mut |event: StreamEvent| printer.event(event)),
+            );
+            let wrote = printer.wrote;
+            (result, printer.finish(), wrote)
+        };
+        flushed?;
+
+        match result {
+            Ok(outcome) => {
+                if framed {
+                    writeln!(
+                        io.err,
+                        "{}",
+                        theme::rule(&plan.ui.theme, plan.ui.width, io.color)
+                    )?;
+                }
+                answered(plan, conversation, outcome, locale, io)?;
+                return Ok(OK);
+            }
+            Err(error) => {
+                let failure = provider_failure(locale, &error, &known);
+                // Text already went out; a second answer would be noise.
+                if wrote || last {
+                    conversation.session.pop();
+                    if framed {
+                        writeln!(
+                            io.err,
+                            "{}",
+                            theme::rule(&plan.ui.theme, plan.ui.width, io.color)
+                        )?;
+                    }
+                    return failure.print(io.err);
+                }
+                failure.print(io.err)?;
+                writeln!(
+                    io.err,
+                    "{}",
+                    tr_with(
+                        locale,
+                        "chat.fallback.try",
+                        &[("model", reference), ("next", &attempts[index + 1])]
+                    )
+                )?;
+            }
+        }
+    }
+    Ok(OK)
+}
+
+/// Asks every compared model at once, then lets a judge merge the answers.
+fn compare_turn(
+    runtime: &Runtime,
+    plan: &Plan,
+    conversation: &mut Conversation,
+    locale: Locale,
+    env_vars: &[(String, String)],
+    io: &mut Io<'_>,
+) -> io::Result<u8> {
+    let messages = conversation.session.messages().to_vec();
+    let lookup = |name: &str| env_lookup(env_vars, name);
+    let known = provider_names(&plan.config);
+    let references = conversation.compare.clone();
+    // The client's future is not `Send` (the encoder and sink stay on one
+    // thread), so the requests run on a local set. They still overlap: each
+    // request is polled while the others wait for the network.
+    let local = tokio::task::LocalSet::new();
+    let (mut slots, joined) = runtime.block_on(local.run_until(async {
+        let mut slots: Vec<Option<Result<(String, ChatOutcome), Failure>>> =
+            (0..references.len()).map(|_| None).collect();
+        let mut tasks = JoinSet::new();
+        for (index, reference) in references.iter().enumerate() {
+            let target =
+                match resolve_target(&plan.config, locale, &lookup, reference, None, &plan.chat) {
+                    Ok(target) => target,
+                    Err(failure) => {
+                        slots[index] = Some(Err(failure));
+                        continue;
+                    }
+                };
+            let system = conversation
+                .system
+                .resolve(Some(&target), plan.chat.system.as_deref());
+            let request = ChatRequest {
+                model: target.model.clone(),
+                system,
+                messages: messages.clone(),
+                max_tokens: target.max_tokens,
+                temperature: target.temperature,
+                stream: false,
+            };
+            tasks.spawn_local(async move {
+                let mut sink = |_: StreamEvent| ControlFlow::Continue(());
+                let result = target.client.chat(&request, &mut sink).await;
+                (index, target.label, result)
+            });
+        }
+        let mut joined = Vec::new();
+        while let Some(result) = tasks.join_next().await {
+            joined.push(result);
+        }
+        (slots, joined)
+    }));
+    for result in joined {
+        match result {
+            Ok((index, label, Ok(outcome))) => slots[index] = Some(Ok((label, outcome))),
+            Ok((index, _, Err(error))) => {
+                slots[index] = Some(Err(provider_failure(locale, &error, &known)));
+            }
+            Err(error) => {
+                writeln!(
+                    io.err,
+                    "{}",
+                    tr_with(
+                        locale,
+                        "chat.compare.failed",
+                        &[("reason", &error.to_string())]
+                    )
+                )?;
+            }
+        }
     }
 
-    match result {
-        Ok(outcome) => {
-            answered(plan, conversation, outcome, locale, io)?;
-            Ok(OK)
-        }
-        Err(error) => {
-            conversation.session.pop();
-            provider_failure(locale, &error, &[]).print(io.err)
+    let mut answers: Vec<(String, String)> = Vec::new();
+    let mut last_code = 1;
+    for slot in slots.into_iter().flatten() {
+        match slot {
+            Err(failure) => {
+                last_code = failure.code;
+                failure.print(io.err)?;
+            }
+            Ok((label, outcome)) => {
+                writeln!(
+                    io.err,
+                    "{}",
+                    tr_with(locale, "chat.compare.header", &[("label", &label)])
+                )?;
+                io.out.write_all(outcome.text.as_bytes())?;
+                if !outcome.text.is_empty() && !outcome.text.ends_with('\n') {
+                    io.out.write_all(b"\n")?;
+                }
+                io.out.flush()?;
+                announce(locale, plan, &outcome, io)?;
+                if !outcome.text.trim().is_empty() {
+                    answers.push((label, outcome.text));
+                }
+            }
         }
     }
+
+    if answers.is_empty() {
+        conversation.session.pop();
+        return Ok(last_code);
+    }
+    let combined = answers
+        .iter()
+        .map(|(label, text)| format!("### {label}\n{text}"))
+        .collect::<Vec<_>>()
+        .join("\n\n");
+
+    if let Some(reference) = conversation.judge.clone() {
+        match resolve_target(&plan.config, locale, &lookup, &reference, None, &plan.chat) {
+            Ok(target) => {
+                let question = conversation
+                    .session
+                    .messages()
+                    .iter()
+                    .rev()
+                    .find(|message| message.role == Role::User)
+                    .map_or_else(String::new, |message| message.content.clone());
+                let prompt = format!(
+                    "Several models answered the same question. Write one final answer \
+                     that keeps the best of each. Reply with the answer only.\n\n\
+                     Question:\n{question}\n\nAnswers:\n{combined}"
+                );
+                let system = conversation
+                    .system
+                    .resolve(Some(&target), plan.chat.system.as_deref());
+                let request = ChatRequest {
+                    model: target.model.clone(),
+                    system,
+                    messages: vec![Message::new(Role::User, prompt)],
+                    max_tokens: target.max_tokens,
+                    temperature: target.temperature,
+                    stream: plan.chat.stream,
+                };
+                writeln!(
+                    io.err,
+                    "{}",
+                    tr_with(locale, "chat.judge.header", &[("label", &target.label)])
+                )?;
+                let spinner = plan.ui.spinner && io.color;
+                if spinner {
+                    write!(io.err, "{}", tr(locale, "ui.thinking"))?;
+                    io.err.flush()?;
+                }
+                let (result, flushed) = {
+                    let mut printer = Printer::new(
+                        &mut *io.out,
+                        &mut *io.err,
+                        io.color,
+                        plan.chat.show_reasoning,
+                    )
+                    .with_theme(&plan.ui.theme)
+                    .with_spinner(spinner);
+                    let result = runtime.block_on(
+                        target
+                            .client
+                            .chat(&request, &mut |event: StreamEvent| printer.event(event)),
+                    );
+                    (result, printer.finish())
+                };
+                flushed?;
+                match result {
+                    Ok(outcome) if !outcome.text.trim().is_empty() => {
+                        announce(locale, plan, &outcome, io)?;
+                        conversation
+                            .session
+                            .push(Message::new(Role::Assistant, outcome.text));
+                        return Ok(OK);
+                    }
+                    Ok(outcome) => {
+                        announce(locale, plan, &outcome, io)?;
+                    }
+                    Err(error) => {
+                        provider_failure(locale, &error, &known).print(io.err)?;
+                    }
+                }
+            }
+            Err(failure) => {
+                failure.print(io.err)?;
+            }
+        }
+    }
+
+    conversation
+        .session
+        .push(Message::new(Role::Assistant, combined));
+    Ok(OK)
 }
 
 /// Records the answer and says what the user should know about it.
@@ -332,7 +834,11 @@ fn answered(
             .session
             .push(Message::new(Role::Assistant, outcome.text.clone()));
     }
+    announce(locale, plan, &outcome, io)
+}
 
+/// Prints the notes and token counts that go with one finished answer.
+fn announce(locale: Locale, plan: &Plan, outcome: &ChatOutcome, io: &mut Io<'_>) -> io::Result<()> {
     let note = match &outcome.finish {
         FinishReason::Length => Some("chat.cut.length"),
         FinishReason::ContentFilter => Some("chat.cut.filter"),
@@ -512,9 +1018,14 @@ fn repl(
     plan: &Plan,
     mut conversation: Conversation,
     locale: Locale,
+    env_vars: &[(String, String)],
     io: &mut Io<'_>,
 ) -> io::Result<u8> {
     let theme = &plan.ui.theme;
+    let provider_label = plan.primary.as_ref().map_or_else(
+        || tr(locale, "ui.compare"),
+        |target| target.provider_name.clone(),
+    );
     if plan.ui.banner {
         write!(
             io.err,
@@ -530,12 +1041,15 @@ fn repl(
     }
     if plan.ui.panel {
         let mut rows = vec![
-            (tr(locale, "ui.provider"), plan.provider_name.clone()),
-            (tr(locale, "ui.model"), conversation.model.clone()),
+            (tr(locale, "ui.provider"), provider_label.clone()),
+            (tr(locale, "ui.model"), conversation.display_model(plan)),
         ];
-        if let Some(system) = &conversation.system {
+        if let Some(system) = conversation
+            .system
+            .resolve(plan.primary.as_ref(), plan.chat.system.as_deref())
+        {
             let room = plan.ui.width.saturating_sub(12).max(8);
-            rows.push((tr(locale, "ui.system"), shorten(system, room)));
+            rows.push((tr(locale, "ui.system"), shorten(&system, room)));
         }
         write!(
             io.err,
@@ -550,8 +1064,8 @@ fn repl(
             locale,
             "repl.banner",
             &[
-                ("provider", &plan.provider_name),
-                ("model", &conversation.model)
+                ("provider", &provider_label),
+                ("model", &conversation.display_model(plan))
             ]
         )
     )?;
@@ -577,14 +1091,15 @@ fn repl(
             continue;
         }
         if let Some((name, rest)) = slash_command(line) {
-            if let Flow::Exit = command(name, rest, &mut conversation, locale, io)? {
+            if let Flow::Exit = command(name, rest, plan, &mut conversation, locale, env_vars, io)?
+            {
                 return Ok(OK);
             }
             continue;
         }
         conversation.session.push(Message::new(Role::User, line));
         // A failed turn has already been reported. The session goes on.
-        turn(runtime, plan, &mut conversation, locale, io, true)?;
+        turn(runtime, plan, &mut conversation, locale, env_vars, io, true)?;
     }
 }
 
@@ -616,13 +1131,20 @@ fn slash_command(line: &str) -> Option<(&str, &str)> {
 fn command(
     name: &str,
     rest: &str,
+    plan: &Plan,
     conversation: &mut Conversation,
     locale: Locale,
+    env_vars: &[(String, String)],
     io: &mut Io<'_>,
 ) -> io::Result<Flow> {
     let say = |io: &mut Io<'_>, key: &str, args: &[(&str, &str)]| {
         writeln!(io.err, "{}", tr_with(locale, key, args))
     };
+    let lookup = |name: &str| env_lookup(env_vars, name);
+    let provider_hint = plan
+        .primary
+        .as_ref()
+        .map(|target| target.provider_name.clone());
     match name {
         "exit" | "quit" | "q" => return Ok(Flow::Exit),
         "help" | "?" => say(io, "repl.help", &[])?,
@@ -630,26 +1152,134 @@ fn command(
             conversation.session.clear();
             say(io, "repl.cleared", &[])?;
         }
-        "model" if rest.is_empty() => say(io, "repl.model", &[("model", &conversation.model)])?,
+        "model" if rest.is_empty() => say(
+            io,
+            "repl.model",
+            &[("model", &conversation.display_model(plan))],
+        )?,
         "model" => {
-            conversation.model = rest.to_owned();
-            say(io, "repl.model_set", &[("model", rest)])?;
+            match resolve_target(
+                &plan.config,
+                locale,
+                &lookup,
+                rest,
+                provider_hint.as_deref(),
+                &plan.chat,
+            ) {
+                Ok(_) => {
+                    conversation.model = rest.to_owned();
+                    say(io, "repl.model_set", &[("model", rest)])?;
+                }
+                Err(failure) => {
+                    failure.print(io.err)?;
+                }
+            }
+        }
+        "compare" if rest.is_empty() => {
+            if conversation.compare.is_empty() {
+                say(io, "repl.compare_none", &[])?;
+            } else {
+                say(
+                    io,
+                    "repl.compare",
+                    &[("models", &conversation.compare.join(", "))],
+                )?;
+            }
+        }
+        "compare" if rest == "off" => {
+            conversation.compare.clear();
+            say(io, "repl.compare_cleared", &[])?;
+        }
+        "compare" => {
+            conversation.compare = list_of(rest);
+            say(
+                io,
+                "repl.compare_set",
+                &[("models", &conversation.compare.join(", "))],
+            )?;
+        }
+        "fallback" if rest.is_empty() => {
+            if conversation.fallback.is_empty() {
+                say(io, "repl.fallback_none", &[])?;
+            } else {
+                say(
+                    io,
+                    "repl.fallback",
+                    &[("models", &conversation.fallback.join(", "))],
+                )?;
+            }
+        }
+        "fallback" if rest == "off" => {
+            conversation.fallback.clear();
+            say(io, "repl.fallback_cleared", &[])?;
+        }
+        "fallback" => {
+            conversation.fallback = list_of(rest);
+            say(
+                io,
+                "repl.fallback_set",
+                &[("models", &conversation.fallback.join(", "))],
+            )?;
+        }
+        "judge" if rest.is_empty() => match &conversation.judge {
+            Some(model) => say(io, "repl.judge", &[("model", model)])?,
+            None => say(io, "repl.judge_none", &[])?,
+        },
+        "judge" if rest == "off" => {
+            conversation.judge = None;
+            say(io, "repl.judge_cleared", &[])?;
+        }
+        "judge" => {
+            match resolve_target(
+                &plan.config,
+                locale,
+                &lookup,
+                rest,
+                provider_hint.as_deref(),
+                &plan.chat,
+            ) {
+                Ok(_) => {
+                    conversation.judge = Some(rest.to_owned());
+                    say(io, "repl.judge_set", &[("model", rest)])?;
+                }
+                Err(failure) => {
+                    failure.print(io.err)?;
+                }
+            }
         }
         "system" if rest.is_empty() => match &conversation.system {
-            Some(text) => say(io, "repl.system", &[("text", text)])?,
-            None => say(io, "repl.system_none", &[])?,
+            SystemChoice::Off => say(io, "repl.system_none", &[])?,
+            SystemChoice::Text(text) => say(io, "repl.system", &[("text", text)])?,
+            SystemChoice::Default => {
+                match conversation
+                    .system
+                    .resolve(plan.primary.as_ref(), plan.chat.system.as_deref())
+                {
+                    Some(text) => say(io, "repl.system", &[("text", &text)])?,
+                    None => say(io, "repl.system_none", &[])?,
+                }
+            }
         },
         "system" if rest == "off" => {
-            conversation.system = None;
+            conversation.system = SystemChoice::Off;
             say(io, "repl.system_cleared", &[])?;
         }
         "system" => {
-            conversation.system = Some(rest.to_owned());
+            conversation.system = SystemChoice::Text(rest.to_owned());
             say(io, "repl.system_set", &[])?;
         }
         other => say(io, "repl.unknown", &[("name", &format!("/{other}"))])?,
     }
     Ok(Flow::Continue)
+}
+
+/// Splits a list written with commas or spaces.
+fn list_of(text: &str) -> Vec<String> {
+    text.split([',', ' ', '\t', '\n'])
+        .map(str::trim)
+        .filter(|item| !item.is_empty())
+        .map(str::to_owned)
+        .collect()
 }
 
 #[cfg(test)]
