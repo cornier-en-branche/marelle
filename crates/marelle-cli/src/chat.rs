@@ -1659,10 +1659,14 @@ fn command(
                             conversation.provider_override = Some(provider.name.clone());
                             writeln!(io.err, "Provider set to {}", provider.name)?;
                         }
-                        Err(error) => setting_failure(locale, &error).print(io.err)?,
+                        Err(error) => {
+                            setting_failure(locale, &error).print(io.err)?;
+                        }
                     }
                 }
-                Err(error) => provider_failure(locale, &error, &known).print(io.err)?,
+                Err(error) => {
+                    provider_failure(locale, &error, &known).print(io.err)?;
+                }
             }
         }
         "model" if rest.is_empty() => say(
