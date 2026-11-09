@@ -678,7 +678,6 @@ fn single_turn(
             max_tokens: target.max_tokens,
             temperature: target.temperature,
             stream: false,
-                tools: Vec::new(),
             tools: crate::tools::definitions(),
         };
 
@@ -793,6 +792,7 @@ fn compare_turn(
                 max_tokens: target.max_tokens,
                 temperature: target.temperature,
                 stream: false,
+                tools: Vec::new(),
             };
             tasks.spawn_local(async move {
                 let mut sink = |_: StreamEvent| ControlFlow::Continue(());
