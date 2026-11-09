@@ -525,6 +525,7 @@ pub(crate) fn run(
                 env_vars,
                 io,
                 false,
+                None,
             )
         }
         None => repl(&runtime, &plan, conversation, locale, env_vars, io),
@@ -1292,14 +1293,13 @@ fn repl_tui(
                 tui.push_user(line.clone())?;
                 conversation.session.push(Message::new(Role::User, line));
                 tui.start_answer()?;
+                let mut answer_output = Vec::new();
                 let mut status_output = Vec::new();
                 let result = {
-                    let mut answer = tui.answer_writer();
                     let mut turn_io = Io {
                         input: io.input,
-                        out: &mut answer,
+                        out: &mut answer_output,
                         err: &mut status_output,
-                        // The TUI draws its own framing and generation state.
                         interactive: false,
                         color: false,
                     };
@@ -1311,8 +1311,10 @@ fn repl_tui(
                         env_vars,
                         &mut turn_io,
                         false,
+                        Some(tui),
                     )?
                 };
+                tui.append_answer(&answer_output)?;
                 tui.finish_answer()?;
                 tui.push_notice(String::from_utf8_lossy(&status_output).trim().to_owned())?;
                 tui.set_status(if result == OK {
@@ -1596,7 +1598,7 @@ fn repl_line(
         }
         conversation.session.push(Message::new(Role::User, line));
         // A failed turn has already been reported. The session goes on.
-        turn(runtime, plan, &mut conversation, locale, env_vars, io, true)?;
+        turn(runtime, plan, &mut conversation, locale, env_vars, io, true, None)?;
     }
 }
 
