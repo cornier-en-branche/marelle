@@ -1895,13 +1895,19 @@ mod tests {
         conversation.provider_override = None;
 
         assert!(conversation.switch_session("Chat 1"));
-        assert_eq!(conversation.session.messages()[0].content, "first conversation");
+        assert_eq!(
+            conversation.session.messages()[0].content,
+            "first conversation"
+        );
         assert_eq!(conversation.model, "quick");
         assert_eq!(conversation.provider_override.as_deref(), Some("zai"));
         assert_eq!(conversation.fallback, vec!["openai/fallback".to_owned()]);
 
         assert!(conversation.switch_session("Chat 2"));
-        assert_eq!(conversation.session.messages()[0].content, "second conversation");
+        assert_eq!(
+            conversation.session.messages()[0].content,
+            "second conversation"
+        );
         assert_eq!(conversation.model, "openai/other");
         assert_eq!(conversation.provider_override, None);
         assert!(!conversation.switch_session("missing"));
