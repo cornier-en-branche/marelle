@@ -10,6 +10,8 @@ use std::collections::{BTreeMap, BTreeSet};
 use std::error::Error;
 use std::fmt;
 
+pub mod file;
+
 /// A configuration layer. Later variants override earlier ones.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub enum Layer {
@@ -75,6 +77,10 @@ pub enum Expected {
     Proxy,
     /// A JSON object.
     JsonObject,
+    /// A list of words, written as a TOML array or comma-separated.
+    List,
+    /// A colour written as `#RGB` or `#RRGGBB`.
+    HexColor,
     /// One of the listed words.
     OneOf(&'static [&'static str]),
 }
@@ -90,6 +96,8 @@ impl fmt::Display for Expected {
             Expected::Url => f.write_str("an http or https URL"),
             Expected::Proxy => f.write_str("system, none, or an http or https proxy URL"),
             Expected::JsonObject => f.write_str("a JSON object"),
+            Expected::List => f.write_str("a list of words"),
+            Expected::HexColor => f.write_str("a HEX colour, such as #B57EDC"),
             Expected::OneOf(words) => write!(f, "one of: {}", words.join(", ")),
         }
     }
@@ -226,6 +234,28 @@ impl Config {
                 _ => Err(SettingError::new(key, Expected::Number)),
             })
             .transpose()
+    }
+
+    /// Reads a list. A TOML array arrives as JSON; a person may also write
+    /// a comma-separated list.
+    pub fn get_list(&self, key: &str) -> Result<Option<Vec<String>>, SettingError> {
+        let Some(value) = self.get(key) else {
+            return Ok(None);
+        };
+        let value = value.trim();
+        if value.starts_with('[') {
+            let items: Vec<String> =
+                serde_json::from_str(value).map_err(|_| SettingError::new(key, Expected::List))?;
+            return Ok(Some(items));
+        }
+        Ok(Some(
+            value
+                .split(',')
+                .map(str::trim)
+                .filter(|item| !item.is_empty())
+                .map(str::to_owned)
+                .collect(),
+        ))
     }
 }
 
@@ -364,6 +394,24 @@ mod tests {
         assert!(config.get_u64("neg").is_err());
         assert!(config.get_f64("inf").is_err());
         assert_eq!(config.get_u64("missing"), Ok(None));
+    }
+
+    #[test]
+    fn lists_come_from_json_or_commas() {
+        let mut config = Config::new();
+        config.set(Layer::Env, "json", r#"["a","b"]"#);
+        config.set(Layer::Env, "commas", "a, b ,,c");
+        config.set(Layer::Env, "broken", "[1,2]");
+        assert_eq!(
+            config.get_list("json"),
+            Ok(Some(vec!["a".to_owned(), "b".to_owned()]))
+        );
+        assert_eq!(
+            config.get_list("commas"),
+            Ok(Some(vec!["a".to_owned(), "b".to_owned(), "c".to_owned()]))
+        );
+        assert!(config.get_list("broken").is_err());
+        assert_eq!(config.get_list("missing"), Ok(None));
     }
 
     #[test]

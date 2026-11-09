@@ -10,7 +10,7 @@ help.usage.line = marelle [--lang <код>] <команда> [параметри
 help.commands = Команди
 help.cmd.chat = Розмова з моделлю: одне запитання, конвеєр або інтерактивний сеанс
 help.cmd.providers = Перелік провайдерів і звідки беруться їхні API-ключі
-help.cmd.config = Перегляд налаштувань: config show [префікс], config explain <ключ>
+help.cmd.config = Перегляд і зміна налаштувань: config show/get/set/unset/schema/path
 help.cmd.help = Показати цю довідку
 help.cmd.version = Показати версію
 help.chat_options = Параметри chat
@@ -70,6 +70,13 @@ repl.system_set = Системний промпт задано.
 repl.system_cleared = Системний промпт прибрано.
 repl.unknown = Невідома команда {name}. Наберіть /help.
 
+# --- інтерфейс ---
+ui.tagline = класики для вашого термінала
+ui.provider = провайдер
+ui.model = модель
+ui.system = система
+ui.thinking = чекаю на перший токен...
+
 # --- таблиця провайдерів ---
 providers.col.name = Провайдер
 providers.col.protocol = Протокол
@@ -117,3 +124,20 @@ fail.transport = Не вдалося зв'язатися з провайдеро
 fail.timeout = Провайдер не відповів вчасно. Межу задає network.idle_timeout_secs.
 fail.protocol = Відповідь провайдера не вдалося розібрати: {detail}
 fail.input = Не вдалося прочитати запит: {reason}
+
+# --- config files, schema and theme ---
+config.set = {key} = {value}  [{path}]
+config.unset = Вилучено {key} з {path}
+config.schema.default = типово
+config.schema.empty = Відповідних налаштувань немає.
+config.path.global = Глобальні налаштування
+config.path.project = Налаштування проєкту
+config.path.exists = є
+config.path.missing = немає
+config.path.none = немає домашнього каталогу; використайте --file
+config.path.no_home = Домашній каталог невідомий. Використайте --file <шлях>.
+error.unknown_setting = Невідоме налаштування
+fail.invalid_value = Налаштування {key}: {reason}.
+fail.config_file = Не вдалося використати файл налаштувань: {detail}
+expected.list = список слів
+expected.hex_color = колір у HEX, наприклад #B57EDC

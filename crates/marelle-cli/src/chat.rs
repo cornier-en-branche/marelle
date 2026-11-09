@@ -20,9 +20,11 @@ use marelle_providers::{
 use tokio::runtime::Runtime;
 
 use crate::Io;
+use crate::VERSION;
 use crate::args::ChatArgs;
-use crate::messages::{Failure, provider_failure};
+use crate::messages::{Failure, config_failure, provider_failure, setting_failure};
 use crate::settings::{build_config, env_lookup};
+use crate::theme::{self, Role as ThemeRole, Theme};
 
 const OK: u8 = 0;
 
@@ -60,12 +62,37 @@ impl ChatSettings {
     }
 }
 
+/// The `ui.*` settings and the palette they select.
+#[derive(Debug)]
+struct UiSettings {
+    theme: Theme,
+    banner: bool,
+    panel: bool,
+    frame: bool,
+    spinner: bool,
+    width: usize,
+}
+
+impl UiSettings {
+    fn from_config(config: &Config, columns: Option<&str>) -> Result<Self, SettingError> {
+        Ok(Self {
+            theme: Theme::from_config(config)?,
+            banner: config.get_bool("ui.banner")?.unwrap_or(true),
+            panel: config.get_bool("ui.panel")?.unwrap_or(true),
+            frame: config.get_bool("ui.frame")?.unwrap_or(true),
+            spinner: config.get_bool("ui.spinner")?.unwrap_or(true),
+            width: theme::width(config.get_u64("ui.width")?, columns),
+        })
+    }
+}
+
 /// Everything decided before the first byte is sent.
 struct Plan {
     provider_name: String,
     model: String,
     client: Client,
     chat: ChatSettings,
+    ui: UiSettings,
 }
 
 /// Chooses the provider and the model, checks the settings, finds the key.
@@ -103,12 +130,15 @@ fn plan(
     let key = provider.api_key_with(&lookup).map_err(fail)?;
     let network = NetworkSettings::from_config(config, &lookup).map_err(fail)?;
     let chat = ChatSettings::from_config(config).map_err(fail)?;
+    let ui = UiSettings::from_config(config, lookup("COLUMNS").as_deref())
+        .map_err(|error| setting_failure(locale, &error))?;
     let client = Client::new(&provider, key, &network).map_err(fail)?;
     Ok(Plan {
         provider_name,
         model,
         client,
         chat,
+        ui,
     })
 }
 
@@ -126,7 +156,10 @@ pub(crate) fn run(
     env_vars: &[(String, String)],
     io: &mut Io<'_>,
 ) -> io::Result<u8> {
-    let config = build_config(env_vars, &args.flags);
+    let config = match build_config(env_vars, &args.flags) {
+        Ok(config) => config,
+        Err(error) => return config_failure(locale, &error).print(io.err),
+    };
     let plan = match plan(&config, locale, |name| env_lookup(env_vars, name)) {
         Ok(plan) => plan,
         Err(failure) => return failure.print(io.err),
@@ -167,7 +200,7 @@ pub(crate) fn run(
                 return Failure::usage(tr(locale, "chat.empty_prompt")).print(io.err);
             }
             conversation.session.push(Message::new(Role::User, prompt));
-            turn(&runtime, &plan, &mut conversation, locale, io)
+            turn(&runtime, &plan, &mut conversation, locale, io, false)
         }
         None => repl(&runtime, &plan, conversation, locale, io),
     }
@@ -220,6 +253,7 @@ fn turn(
     conversation: &mut Conversation,
     locale: Locale,
     io: &mut Io<'_>,
+    interactive: bool,
 ) -> io::Result<u8> {
     let request = ChatRequest {
         model: conversation.model.clone(),
@@ -230,13 +264,31 @@ fn turn(
         stream: plan.chat.stream,
     };
 
+    // A rule above and below the answer, for a session at a terminal. It
+    // goes to stderr, so a redirected answer stays exactly the answer.
+    let framed = interactive && plan.ui.frame;
+    if framed {
+        writeln!(
+            io.err,
+            "{}",
+            theme::rule(&plan.ui.theme, plan.ui.width, io.color)
+        )?;
+    }
+    let spinner = interactive && plan.ui.spinner && io.color;
+    if spinner {
+        write!(io.err, "{}", tr(locale, "ui.thinking"))?;
+        io.err.flush()?;
+    }
+
     let (result, flushed) = {
         let mut printer = Printer::new(
             &mut *io.out,
             &mut *io.err,
             io.color,
             plan.chat.show_reasoning,
-        );
+        )
+        .with_theme(&plan.ui.theme)
+        .with_spinner(spinner);
         let result = runtime.block_on(
             plan.client
                 .chat(&request, &mut |event: StreamEvent| printer.event(event)),
@@ -244,6 +296,13 @@ fn turn(
         (result, printer.finish())
     };
     flushed?;
+    if framed {
+        writeln!(
+            io.err,
+            "{}",
+            theme::rule(&plan.ui.theme, plan.ui.width, io.color)
+        )?;
+    }
 
     match result {
         Ok(outcome) => {
@@ -310,6 +369,9 @@ struct Printer<'a> {
     err: &'a mut dyn Write,
     color: bool,
     show_reasoning: bool,
+    theme: Theme,
+    /// A "waiting" note is on the current line of `err`.
+    spinner: bool,
     /// A block of reasoning is open on `err`.
     reasoning_open: bool,
     /// Some answer text has been written.
@@ -331,6 +393,8 @@ impl<'a> Printer<'a> {
             err,
             color,
             show_reasoning,
+            theme: Theme::default(),
+            spinner: false,
             reasoning_open: false,
             wrote: false,
             ends_with_newline: true,
@@ -338,13 +402,38 @@ impl<'a> Printer<'a> {
         }
     }
 
+    fn with_theme(mut self, theme: &Theme) -> Self {
+        self.theme = theme.clone();
+        self
+    }
+
+    fn with_spinner(mut self, spinner: bool) -> Self {
+        self.spinner = spinner;
+        self
+    }
+
+    /// Erases the waiting note once something arrives.
+    fn clear_spinner(&mut self) -> io::Result<()> {
+        if self.spinner {
+            self.spinner = false;
+            if self.color {
+                self.err.write_all(b"\r\x1b[2K")?;
+            }
+            self.err.flush()?;
+        }
+        Ok(())
+    }
+
     fn event(&mut self, event: StreamEvent) -> ControlFlow<()> {
         if self.failure.is_some() {
             return ControlFlow::Break(());
         }
-        let result = match event {
-            StreamEvent::Text(piece) => self.text(&piece),
-            StreamEvent::Reasoning(piece) => self.reasoning(&piece),
+        let result = match self.clear_spinner() {
+            Ok(()) => match event {
+                StreamEvent::Text(piece) => self.text(&piece),
+                StreamEvent::Reasoning(piece) => self.reasoning(&piece),
+            },
+            Err(error) => Err(error),
         };
         match result {
             Ok(()) => ControlFlow::Continue(()),
@@ -361,8 +450,10 @@ impl<'a> Printer<'a> {
         }
         if !self.reasoning_open {
             if self.color {
-                // Dim, so that it reads as a side note.
-                self.err.write_all(b"\x1b[2m")?;
+                // Muted, so that it reads as a side note.
+                if let Some(color) = self.theme.color(ThemeRole::Reasoning) {
+                    self.err.write_all(color.foreground().as_bytes())?;
+                }
             }
             self.reasoning_open = true;
         }
@@ -387,7 +478,8 @@ impl<'a> Printer<'a> {
             return Ok(());
         }
         self.close_reasoning()?;
-        self.out.write_all(piece.as_bytes())?;
+        let painted = self.theme.paint(ThemeRole::Text, piece, self.color);
+        self.out.write_all(painted.as_bytes())?;
         self.out.flush()?;
         self.wrote = true;
         self.ends_with_newline = piece.ends_with('\n');
@@ -399,6 +491,7 @@ impl<'a> Printer<'a> {
         if let Some(error) = self.failure.take() {
             return Err(error);
         }
+        self.clear_spinner()?;
         self.close_reasoning()?;
         if self.wrote && !self.ends_with_newline {
             self.out.write_all(b"\n")?;
@@ -421,6 +514,35 @@ fn repl(
     locale: Locale,
     io: &mut Io<'_>,
 ) -> io::Result<u8> {
+    let theme = &plan.ui.theme;
+    if plan.ui.banner {
+        write!(
+            io.err,
+            "{}",
+            theme::banner(
+                theme,
+                VERSION,
+                &tr(locale, "ui.tagline"),
+                plan.ui.width,
+                io.color
+            )
+        )?;
+    }
+    if plan.ui.panel {
+        let mut rows = vec![
+            (tr(locale, "ui.provider"), plan.provider_name.clone()),
+            (tr(locale, "ui.model"), conversation.model.clone()),
+        ];
+        if let Some(system) = &conversation.system {
+            let room = plan.ui.width.saturating_sub(12).max(8);
+            rows.push((tr(locale, "ui.system"), shorten(system, room)));
+        }
+        write!(
+            io.err,
+            "{}",
+            theme::panel(theme, &rows, plan.ui.width, io.color)
+        )?;
+    }
     writeln!(
         io.err,
         "{}",
@@ -434,7 +556,7 @@ fn repl(
         )
     )?;
     loop {
-        write!(io.err, "> ")?;
+        write!(io.err, "{}", theme::prompt(theme, io.color))?;
         io.err.flush()?;
 
         let mut line = String::new();
@@ -462,8 +584,19 @@ fn repl(
         }
         conversation.session.push(Message::new(Role::User, line));
         // A failed turn has already been reported. The session goes on.
-        turn(runtime, plan, &mut conversation, locale, io)?;
+        turn(runtime, plan, &mut conversation, locale, io, true)?;
     }
+}
+
+/// Shortens `text` to `room` characters, ending it with a single ellipsis.
+fn shorten(text: &str, room: usize) -> String {
+    let flat = text.split_whitespace().collect::<Vec<_>>().join(" ");
+    if flat.chars().count() <= room {
+        return flat;
+    }
+    let mut out: String = flat.chars().take(room.saturating_sub(1)).collect();
+    out.push('…');
+    out
 }
 
 /// Splits `/name rest`. A line that starts with a path, such as
@@ -570,6 +703,35 @@ mod tests {
     }
 
     #[test]
+    fn the_interface_follows_the_settings() {
+        use marelle_config::Layer;
+
+        let mut config = Config::new();
+        config.set(Layer::Default, "theme.primary", "#112233");
+        config.set(Layer::Default, "ui.banner", "false");
+        config.set(Layer::Default, "ui.width", "50");
+        let ui = UiSettings::from_config(&config, Some("120")).unwrap();
+        assert_eq!(ui.width, 50);
+        assert!(!ui.banner);
+        assert!(ui.frame && ui.spinner);
+        assert_eq!(
+            ui.theme.color(ThemeRole::Primary),
+            theme::parse_hex("#112233")
+        );
+
+        config.set(Layer::Default, "theme.primary", "not-a-colour");
+        let error = UiSettings::from_config(&config, None).unwrap_err();
+        assert_eq!(error.key, "theme.primary");
+    }
+
+    #[test]
+    fn long_system_prompts_are_shortened_on_one_line() {
+        assert_eq!(shorten("be brief", 20), "be brief");
+        assert_eq!(shorten("one\n two   three", 20), "one two three");
+        assert_eq!(shorten("abcdefghij", 5), "abcd…");
+    }
+
+    #[test]
     fn usage_names_only_what_the_provider_reported() {
         let usage = Usage {
             input_tokens: Some(12),
@@ -599,7 +761,10 @@ mod tests {
             printer.finish().unwrap();
         }
         assert_eq!(String::from_utf8(out).unwrap(), "Hello\n");
-        assert_eq!(String::from_utf8(err).unwrap(), "\x1b[2mhmmm\x1b[0m\n");
+        assert_eq!(
+            String::from_utf8(err).unwrap(),
+            "\x1b[38;2;138;127;149mhmmm\x1b[0m\n"
+        );
     }
 
     #[test]

@@ -10,7 +10,7 @@ help.usage.line = marelle [--lang <code>] <commande> [options]
 help.commands = Commandes
 help.cmd.chat = Discuter avec un modèle : une question, un tube ou une session interactive
 help.cmd.providers = Lister les fournisseurs et l'origine de leurs clés d'API
-help.cmd.config = Consulter les réglages : config show [préfixe], config explain <clé>
+help.cmd.config = Consulter et modifier les réglages : config show/get/set/unset/schema/path
 help.cmd.help = Afficher cette aide
 help.cmd.version = Afficher la version
 help.chat_options = Options de chat
@@ -70,6 +70,13 @@ repl.system_set = Prompt système défini.
 repl.system_cleared = Prompt système retiré.
 repl.unknown = Commande {name} inconnue. Tapez /help.
 
+# --- l'interface ---
+ui.tagline = une marelle pour votre terminal
+ui.provider = fournisseur
+ui.model = modèle
+ui.system = système
+ui.thinking = en attente du premier jeton...
+
 # --- le tableau des fournisseurs ---
 providers.col.name = Fournisseur
 providers.col.protocol = Protocole
@@ -117,3 +124,20 @@ fail.transport = Impossible de joindre le fournisseur : {detail}
 fail.timeout = Le fournisseur n'a pas répondu à temps. La limite est network.idle_timeout_secs.
 fail.protocol = La réponse du fournisseur n'a pas été comprise : {detail}
 fail.input = Impossible de lire la demande : {reason}
+
+# --- config files, schema and theme ---
+config.set = {key} = {value}  [{path}]
+config.unset = {key} retiré de {path}
+config.schema.default = défaut
+config.schema.empty = Aucun réglage ne correspond.
+config.path.global = Réglages globaux
+config.path.project = Réglages du projet
+config.path.exists = présent
+config.path.missing = absent
+config.path.none = pas de répertoire personnel ; utilisez --file
+config.path.no_home = Le répertoire personnel est inconnu. Utilisez --file <chemin>.
+error.unknown_setting = Réglage inconnu
+fail.invalid_value = Réglage {key} : {reason}.
+fail.config_file = Impossible d'utiliser le fichier de réglages : {detail}
+expected.list = une liste de mots
+expected.hex_color = une couleur HEX, par exemple #B57EDC

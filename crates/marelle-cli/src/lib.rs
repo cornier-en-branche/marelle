@@ -10,7 +10,9 @@ mod args;
 mod chat;
 mod inspect;
 mod messages;
+mod schema;
 mod settings;
+mod theme;
 
 use std::io::{self, BufRead, Write};
 
@@ -83,6 +85,13 @@ pub fn run(args: &[String], env_vars: &[(String, String)], io: &mut Io<'_>) -> i
         Command::Providers => inspect::providers(locale, env_vars, io),
         Command::ConfigShow { prefix } => inspect::show(locale, prefix.as_deref(), env_vars, io),
         Command::ConfigExplain { key } => inspect::explain(locale, key.as_deref(), env_vars, io),
+        Command::ConfigGet { key } => inspect::get(locale, &key, env_vars, io),
+        Command::ConfigSet { key, value, file } => {
+            inspect::set(locale, &key, &value, &file, env_vars, io)
+        }
+        Command::ConfigUnset { key, file } => inspect::unset(locale, &key, &file, env_vars, io),
+        Command::ConfigSchema { prefix } => inspect::schema(locale, prefix.as_deref(), io),
+        Command::ConfigPath => inspect::paths(locale, env_vars, io),
         Command::Chat(chat_args) if chat_args.help => help(locale, io.out),
         Command::Chat(chat_args) => chat::run(chat_args, locale, env_vars, io),
         Command::Unknown(name) => {
@@ -425,5 +434,83 @@ mod tests {
         let (code, out, _) = run_cli(&["config", "show", "zzz."], &[]);
         assert_eq!(code, 0);
         assert_eq!(out, "No settings match.\n");
+    }
+
+    #[test]
+    fn config_set_writes_a_checked_value_and_unset_removes_it() {
+        let dir = std::env::temp_dir().join(format!("marelle-cli-set-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        let path = dir.join("config.toml");
+        let file = path.display().to_string();
+
+        let (code, out, err) = run_cli(
+            &["config", "set", "theme.primary", "#112233", "--file", &file],
+            &[],
+        );
+        assert_eq!((code, err.as_str()), (0, ""));
+        assert!(out.contains("theme.primary"), "{out}");
+        let written = std::fs::read_to_string(&path).unwrap();
+        assert!(written.contains("[theme]"), "{written}");
+        assert!(written.contains("primary = \"#112233\""), "{written}");
+
+        let (code, _, err) = run_cli(
+            &["config", "set", "theme.primary", "purple", "--file", &file],
+            &[],
+        );
+        assert_eq!(code, 2);
+        assert!(err.contains("theme.primary"), "{err}");
+        assert!(err.contains("HEX colour"), "{err}");
+        assert_eq!(
+            std::fs::read_to_string(&path).unwrap(),
+            written,
+            "a refused value leaves the file alone"
+        );
+
+        let (code, _, err) = run_cli(
+            &[
+                "config",
+                "set",
+                "theme.nonsense",
+                "#112233",
+                "--file",
+                &file,
+            ],
+            &[],
+        );
+        assert_eq!(code, 2);
+        assert!(err.contains("Unknown setting"), "{err}");
+
+        let (code, _, _) = run_cli(&["config", "unset", "theme.primary", "--file", &file], &[]);
+        assert_eq!(code, 0);
+        let after = std::fs::read_to_string(&path).unwrap();
+        assert!(!after.contains("primary"), "{after}");
+
+        std::fs::remove_dir_all(&dir).unwrap();
+    }
+
+    #[test]
+    fn config_schema_shows_types_and_dynamic_families() {
+        let (code, out, _) = run_cli(&["config", "schema", "theme."], &[]);
+        assert_eq!(code, 0);
+        assert!(out.contains("theme.primary"), "{out}");
+        assert!(out.contains("HEX colour"), "{out}");
+        assert!(out.contains("#B57EDC"), "{out}");
+
+        let (_, out, _) = run_cli(&["config", "schema", "providers."], &[]);
+        assert!(out.contains("providers.<id>.base_url"), "{out}");
+        assert!(out.contains("URL"), "{out}");
+    }
+
+    #[test]
+    fn config_path_names_both_files() {
+        let (code, out, _) = run_cli(&["config", "path"], &[("HOME", "/home/someone")]);
+        assert_eq!(code, 0);
+        assert!(
+            out.contains("/home/someone/.config/marelle/config.toml"),
+            "{out}"
+        );
+        assert!(out.contains(".marelle/config.toml"), "{out}");
+        assert!(out.contains("missing"), "{out}");
     }
 }

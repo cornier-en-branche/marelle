@@ -8,7 +8,8 @@
 
 use std::io::{self, Write};
 
-use marelle_config::Expected;
+use marelle_config::file::FileError;
+use marelle_config::{Expected, SettingError};
 use marelle_i18n::{Locale, tr, tr_with};
 use marelle_providers::ProviderError;
 
@@ -56,10 +57,33 @@ pub(crate) fn expected(locale: Locale, expected: &Expected) -> String {
         Expected::Url => tr(locale, "expected.url"),
         Expected::Proxy => tr(locale, "expected.proxy"),
         Expected::JsonObject => tr(locale, "expected.json_object"),
+        Expected::List => tr(locale, "expected.list"),
+        Expected::HexColor => tr(locale, "expected.hex_color"),
         Expected::OneOf(values) => {
             tr_with(locale, "expected.one_of", &[("values", &values.join(", "))])
         }
     }
+}
+
+/// Describes a setting whose value has the wrong shape.
+pub(crate) fn setting_failure(locale: Locale, setting: &SettingError) -> Failure {
+    Failure::usage(tr_with(
+        locale,
+        "fail.setting",
+        &[
+            ("key", &setting.key),
+            ("expected", &expected(locale, &setting.expected)),
+        ],
+    ))
+}
+
+/// Describes a setting file that could not be read or written.
+pub(crate) fn config_failure(locale: Locale, error: &FileError) -> Failure {
+    Failure::usage(tr_with(
+        locale,
+        "fail.config_file",
+        &[("detail", &error.to_string())],
+    ))
 }
 
 /// Describes a provider error. `known` lists the providers that exist, for
@@ -137,7 +161,6 @@ pub(crate) fn provider_failure(locale: Locale, error: &ProviderError, known: &[S
 #[cfg(test)]
 mod tests {
     use super::*;
-    use marelle_config::SettingError;
 
     fn every_error() -> Vec<ProviderError> {
         vec![

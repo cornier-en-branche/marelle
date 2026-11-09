@@ -16,11 +16,12 @@ marelle-config.workspace = true
 marelle-core.workspace = true
 marelle-i18n.workspace = true
 marelle-providers.workspace = true
+reqwest.workspace = true
+serde_json.workspace = true
 tokio.workspace = true
 
 [dev-dependencies]
 marelle-testkit.workspace = true
-serde_json.workspace = true
 
 [lints]
 workspace = true

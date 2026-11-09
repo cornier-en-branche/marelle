@@ -13,10 +13,41 @@ pub(crate) enum Command {
     Help,
     Version,
     Providers,
-    ConfigShow { prefix: Option<String> },
-    ConfigExplain { key: Option<String> },
+    ConfigShow {
+        prefix: Option<String>,
+    },
+    ConfigExplain {
+        key: Option<String>,
+    },
+    ConfigGet {
+        key: String,
+    },
+    ConfigSet {
+        key: String,
+        value: String,
+        file: FileChoice,
+    },
+    ConfigUnset {
+        key: String,
+        file: FileChoice,
+    },
+    ConfigSchema {
+        prefix: Option<String>,
+    },
+    ConfigPath,
     Chat(ChatArgs),
     Unknown(String),
+}
+
+/// Which file `config set` and `config unset` write to.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) enum FileChoice {
+    /// The user-wide file.
+    Global,
+    /// The file in the current project.
+    Project,
+    /// An explicit path.
+    Path(String),
 }
 
 /// The arguments of `marelle chat`.
@@ -82,12 +113,67 @@ pub(crate) fn parse(words: &[String]) -> Result<Command, ArgError> {
             Some("explain") => Command::ConfigExplain {
                 key: iter.next().map(str::to_owned),
             },
+            Some("get") => Command::ConfigGet {
+                key: iter.next().unwrap_or_default().to_owned(),
+            },
+            Some("set") => parse_config_write(iter, true)?,
+            Some("unset") => parse_config_write(iter, false)?,
+            Some("schema") => Command::ConfigSchema {
+                prefix: iter.next().map(str::to_owned),
+            },
+            Some("path") => Command::ConfigPath,
             Some(other) => Command::Unknown(format!("config {other}")),
         },
         Some("chat") => Command::Chat(parse_chat(iter)?),
         Some(other) => Command::Unknown(other.to_owned()),
     };
     Ok(command)
+}
+
+/// Parses `config set` (with a value) and `config unset` (without one).
+fn parse_config_write<'a>(
+    mut words: impl Iterator<Item = &'a str>,
+    with_value: bool,
+) -> Result<Command, ArgError> {
+    let mut file = FileChoice::Global;
+    let mut positional: Vec<&str> = Vec::new();
+    while let Some(word) = words.next() {
+        if word == "--" {
+            positional.extend(words.by_ref());
+            break;
+        }
+        if word == "--global" {
+            file = FileChoice::Global;
+        } else if word == "--project" {
+            file = FileChoice::Project;
+        } else if word == "--file" {
+            file = FileChoice::Path(
+                words
+                    .next()
+                    .ok_or_else(|| ArgError::NeedsValue("--file".to_owned()))?
+                    .to_owned(),
+            );
+        } else if let Some(path) = word.strip_prefix("--file=") {
+            file = FileChoice::Path(path.to_owned());
+        } else {
+            positional.push(word);
+        }
+    }
+    let key = positional.first().copied().unwrap_or_default().to_owned();
+    if with_value {
+        Ok(Command::ConfigSet {
+            key,
+            value: positional
+                .iter()
+                .skip(1)
+                .copied()
+                .collect::<Vec<_>>()
+                .join(" "),
+            file,
+        })
+    } else {
+        Ok(Command::ConfigUnset { key, file })
+    }
 }
 
 fn parse_chat<'a>(mut words: impl Iterator<Item = &'a str>) -> Result<ChatArgs, ArgError> {

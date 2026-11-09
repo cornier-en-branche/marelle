@@ -10,7 +10,7 @@ help.usage.line = marelle [--lang <code>] <command> [options]
 help.commands = Commands
 help.cmd.chat = Talk to a model: one question, a pipe, or an interactive session
 help.cmd.providers = List providers and where their API keys come from
-help.cmd.config = Inspect settings: config show [prefix], config explain <key>
+help.cmd.config = Inspect and change settings: config show/get/set/unset/schema/path
 help.cmd.help = Show this help
 help.cmd.version = Show the version
 help.chat_options = Chat options
@@ -70,6 +70,13 @@ repl.system_set = System prompt set.
 repl.system_cleared = System prompt cleared.
 repl.unknown = Unknown command {name}. Type /help.
 
+# --- the interface ---
+ui.tagline = a hopscotch board for your terminal
+ui.provider = provider
+ui.model = model
+ui.system = system
+ui.thinking = waiting for the first token...
+
 # --- the providers table ---
 providers.col.name = Provider
 providers.col.protocol = Protocol
@@ -117,3 +124,20 @@ fail.transport = Cannot talk to the provider: {detail}
 fail.timeout = The provider did not answer in time. The limit is network.idle_timeout_secs.
 fail.protocol = The provider's answer was not understood: {detail}
 fail.input = Cannot read the prompt: {reason}
+
+# --- config files, schema and theme ---
+config.set = {key} = {value}  [{path}]
+config.unset = Removed {key} from {path}
+config.schema.default = default
+config.schema.empty = No settings match.
+config.path.global = Global settings
+config.path.project = Project settings
+config.path.exists = exists
+config.path.missing = missing
+config.path.none = no home directory; use --file
+config.path.no_home = No home directory is known. Use --file <path>.
+error.unknown_setting = Unknown setting
+fail.invalid_value = Setting {key}: {reason}.
+fail.config_file = Cannot use the settings file: {detail}
+expected.list = a list of words
+expected.hex_color = a HEX colour, such as #B57EDC
