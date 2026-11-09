@@ -677,7 +677,9 @@ fn single_turn(
             messages: messages.clone(),
             max_tokens: target.max_tokens,
             temperature: target.temperature,
-            stream: plan.chat.stream,
+            stream: false,
+                tools: Vec::new(),
+            tools: crate::tools::definitions(),
         };
 
         if spinner {
@@ -893,6 +895,7 @@ fn compare_turn(
                     max_tokens: target.max_tokens,
                     temperature: target.temperature,
                     stream: plan.chat.stream,
+                    tools: Vec::new(),
                 };
                 writeln!(
                     io.err,
