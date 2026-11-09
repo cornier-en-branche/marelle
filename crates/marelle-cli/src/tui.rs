@@ -930,9 +930,9 @@ fn command_hint(input: &str) -> String {
         "/provider",
         "/quit",
         "/session",
+        "/skills",
         "/system",
         "/tools",
-        "/skills",
     ]
     .into_iter()
     .filter(|candidate| candidate[1..].starts_with(command))
@@ -1055,7 +1055,7 @@ mod tests {
         assert_eq!(command_hint("/prov"), "/provider");
         assert_eq!(
             command_hint("/"),
-            "/clear   /compare   /exit   /fallback   /help   /judge   /model   /provider   /quit   /session   /system"
+            "/clear   /compare   /exit   /fallback   /help   /judge   /model   /provider   /quit   /session   /skills   /system   /tools"
         );
         assert_eq!(command_hint("hello"), "");
         assert_eq!(command_hint("/model glm"), "");
