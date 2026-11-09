@@ -355,9 +355,7 @@ fn effective_provider_name_for(
             return Some(provider);
         }
     }
-    provider_override
-        .or(default_provider)
-        .map(str::to_owned)
+    provider_override.or(default_provider).map(str::to_owned)
 }
 
 fn effective_provider_name(plan: &Plan, conversation: &Conversation) -> Option<String> {
@@ -365,7 +363,9 @@ fn effective_provider_name(plan: &Plan, conversation: &Conversation) -> Option<S
         &plan.config,
         &conversation.model,
         conversation.provider_override.as_deref(),
-        plan.primary.as_ref().map(|target| target.provider_name.as_str()),
+        plan.primary
+            .as_ref()
+            .map(|target| target.provider_name.as_str()),
     )
 }
 
