@@ -1848,6 +1848,7 @@ fn repl_line(
         match io.input.read_line(&mut line) {
             Ok(0) => {
                 writeln!(io.err)?;
+                persist_session_store(env_vars, &plan.config, &conversation)?;
                 return Ok(OK);
             }
             Ok(_) => {}
@@ -1862,8 +1863,9 @@ fn repl_line(
             continue;
         }
         if let Some((name, rest)) = slash_command(line) {
-            if let Flow::Exit = command(name, rest, plan, &mut conversation, locale, env_vars, io)?
-            {
+            let flow = command(name, rest, plan, &mut conversation, locale, env_vars, io)?;
+            persist_session_store(env_vars, &plan.config, &conversation)?;
+            if let Flow::Exit = flow {
                 return Ok(OK);
             }
             continue;
@@ -1871,6 +1873,7 @@ fn repl_line(
         conversation.session.push(Message::new(Role::User, line));
         // A failed turn has already been reported. The session goes on.
         turn(runtime, plan, &mut conversation, locale, env_vars, io, true, None)?;
+        persist_session_store(env_vars, &plan.config, &conversation)?;
     }
 }
 
