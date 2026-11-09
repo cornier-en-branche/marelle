@@ -1093,7 +1093,8 @@ fn repl_tui(
                     continue;
                 }
 
-                tui.push_user(line)?;
+                tui.push_user(line.clone())?;
+                conversation.session.push(Message::new(Role::User, line));
                 tui.start_answer()?;
                 let mut status_output = Vec::new();
                 let result = {
