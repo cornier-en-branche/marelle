@@ -1387,11 +1387,16 @@ fn session_selector_items(conversation: &Conversation) -> Vec<SelectorItem> {
         label: format!("{}  (current)", conversation.session_name),
         detail: format!("{} messages", conversation.session.len()),
     }];
-    items.extend(conversation.saved_sessions.iter().map(|session| SelectorItem {
-        value: session.name.clone(),
-        label: session.name.clone(),
-        detail: format!("{} messages", session.session.len()),
-    }));
+    items.extend(
+        conversation
+            .saved_sessions
+            .iter()
+            .map(|session| SelectorItem {
+                value: session.name.clone(),
+                label: session.name.clone(),
+                detail: format!("{} messages", session.session.len()),
+            }),
+    );
     items
 }
 
@@ -1618,7 +1623,11 @@ fn command(
             writeln!(io.err, "Current provider: {current}")?;
         }
         "session" if rest.is_empty() => {
-            writeln!(io.err, "Conversations: {}", conversation.session_names().join(", "))?;
+            writeln!(
+                io.err,
+                "Conversations: {}",
+                conversation.session_names().join(", ")
+            )?;
         }
         "session" if rest == "new" => {
             conversation.new_session();
@@ -1847,12 +1856,8 @@ mod tests {
             "glm-5.2"
         );
         assert_eq!(
-            model_for_provider(
-                &config,
-                "openrouter/anthropic/claude-x",
-                Some("openrouter")
-            )
-            .unwrap(),
+            model_for_provider(&config, "openrouter/anthropic/claude-x", Some("openrouter"))
+                .unwrap(),
             "anthropic/claude-x"
         );
         assert_eq!(
