@@ -146,17 +146,25 @@ fn canonical_candidate(path: &Path) -> Result<PathBuf, String> {
     if path.exists() {
         return path.canonicalize().map_err(|error| error.to_string());
     }
-    let name = path
-        .file_name()
-        .ok_or_else(|| "Path has no final component.".to_owned())?;
-    let parent = path
-        .parent()
-        .filter(|parent| !parent.as_os_str().is_empty())
-        .unwrap_or_else(|| Path::new("."));
-    let parent = parent.canonicalize().map_err(|error| {
-        format!("Parent directory does not exist or cannot be resolved: {error}")
+    let mut missing = Vec::new();
+    let mut ancestor = path;
+    while !ancestor.exists() {
+        let name = ancestor
+            .file_name()
+            .ok_or_else(|| "Path has no existing parent directory.".to_owned())?;
+        missing.push(name.to_os_string());
+        ancestor = ancestor
+            .parent()
+            .filter(|parent| !parent.as_os_str().is_empty())
+            .unwrap_or_else(|| Path::new("."));
+    }
+    let mut resolved = ancestor.canonicalize().map_err(|error| {
+        format!("Existing parent cannot be resolved: {error}")
     })?;
-    Ok(parent.join(name))
+    for component in missing.iter().rev() {
+        resolved.push(component);
+    }
+    Ok(resolved)
 }
 
 fn roots(config: &Config, key: &str, default: &[&str]) -> Vec<PathBuf> {
