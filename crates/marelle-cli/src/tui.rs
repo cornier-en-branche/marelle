@@ -12,15 +12,13 @@ use std::io::{self, Stdout, Write, stdout};
 
 use crossterm::cursor::{Hide, MoveTo, Show};
 use crossterm::event::{
-    self, DisableBracketedPaste, EnableBracketedPaste, Event, KeyCode, KeyEvent,
-    KeyEventKind, KeyModifiers,
+    self, DisableBracketedPaste, EnableBracketedPaste, Event, KeyCode, KeyEvent, KeyEventKind,
+    KeyModifiers,
 };
 use crossterm::execute;
 use crossterm::queue;
 use crossterm::style::Print;
-use crossterm::terminal::{
-    self, Clear, ClearType, EnterAlternateScreen, LeaveAlternateScreen,
-};
+use crossterm::terminal::{self, Clear, ClearType, EnterAlternateScreen, LeaveAlternateScreen};
 
 use crate::VERSION;
 use crate::theme::{Role as ThemeRole, Theme};
@@ -164,11 +162,9 @@ impl Tui {
     }
 
     pub(crate) fn finish_answer(&mut self) -> io::Result<()> {
-        if self
-            .messages
-            .last()
-            .is_some_and(|message| message.kind == MessageKind::Assistant && message.text.is_empty())
-        {
+        if self.messages.last().is_some_and(|message| {
+            message.kind == MessageKind::Assistant && message.text.is_empty()
+        }) {
             self.messages.pop();
         }
         self.render()
@@ -271,11 +267,15 @@ impl Tui {
             }
             KeyCode::PageUp => {
                 let (_, height) = terminal::size().unwrap_or((80, 24));
-                self.scroll = self.scroll.saturating_add(usize::from(height).saturating_sub(7).max(1));
+                self.scroll = self
+                    .scroll
+                    .saturating_add(usize::from(height).saturating_sub(7).max(1));
             }
             KeyCode::PageDown => {
                 let (_, height) = terminal::size().unwrap_or((80, 24));
-                self.scroll = self.scroll.saturating_sub(usize::from(height).saturating_sub(7).max(1));
+                self.scroll = self
+                    .scroll
+                    .saturating_sub(usize::from(height).saturating_sub(7).max(1));
             }
             KeyCode::Tab => self.complete_command(),
             KeyCode::Esc => {
@@ -434,7 +434,14 @@ impl Tui {
             return;
         }
         const COMMANDS: &[&str] = &[
-            "/clear", "/compare", "/exit", "/fallback", "/help", "/judge", "/model", "/quit",
+            "/clear",
+            "/compare",
+            "/exit",
+            "/fallback",
+            "/help",
+            "/judge",
+            "/model",
+            "/quit",
             "/system",
         ];
         let matches: Vec<&str> = COMMANDS
@@ -480,7 +487,10 @@ impl Tui {
             transcript.push((String::new(), ThemeRole::Dim));
         }
         if transcript.is_empty() {
-            transcript.push(("  Start a conversation by typing below.".to_owned(), ThemeRole::Dim));
+            transcript.push((
+                "  Start a conversation by typing below.".to_owned(),
+                ThemeRole::Dim,
+            ));
         }
 
         queue!(self.output, MoveTo(0, 0), Clear(ClearType::All))?;
@@ -515,7 +525,10 @@ impl Tui {
 
         self.draw_line(
             input_top,
-            &format!("╭─ Message {} ", "─".repeat(width.saturating_sub(13).max(1))),
+            &format!(
+                "╭─ Message {} ",
+                "─".repeat(width.saturating_sub(13).max(1))
+            ),
             ThemeRole::Border,
             width,
         )?;
@@ -539,7 +552,8 @@ impl Tui {
 
         let hint = command_hint(&self.input);
         let footer = if hint.is_empty() {
-            "Enter send · Shift+Enter newline · ↑↓ history · PgUp/PgDn scroll · Ctrl+C quit".to_owned()
+            "Enter send · Shift+Enter newline · ↑↓ history · PgUp/PgDn scroll · Ctrl+C quit"
+                .to_owned()
         } else {
             format!("{hint}  ·  Enter send · Shift+Enter newline")
         };
@@ -559,7 +573,10 @@ impl Tui {
         let x = 2 + cursor_column;
         queue!(
             self.output,
-            MoveTo(x.min(u16::MAX as usize) as u16, y.min(u16::MAX as usize) as u16),
+            MoveTo(
+                x.min(u16::MAX as usize) as u16,
+                y.min(u16::MAX as usize) as u16
+            ),
             Show
         )?;
         self.output.flush()
@@ -704,7 +721,14 @@ fn command_hint(input: &str) -> String {
         return String::new();
     }
     [
-        "/clear", "/compare", "/exit", "/fallback", "/help", "/judge", "/model", "/quit",
+        "/clear",
+        "/compare",
+        "/exit",
+        "/fallback",
+        "/help",
+        "/judge",
+        "/model",
+        "/quit",
         "/system",
     ]
     .into_iter()
@@ -812,7 +836,10 @@ mod tests {
     #[test]
     fn command_hints_only_match_a_partial_slash_command() {
         assert_eq!(command_hint("/mod"), "/model");
-        assert_eq!(command_hint("/"), "/clear   /compare   /exit   /fallback   /help   /judge   /model   /quit   /system");
+        assert_eq!(
+            command_hint("/"),
+            "/clear   /compare   /exit   /fallback   /help   /judge   /model   /quit   /system"
+        );
         assert_eq!(command_hint("hello"), "");
         assert_eq!(command_hint("/model glm"), "");
     }
