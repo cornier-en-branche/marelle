@@ -10,7 +10,7 @@
 
 use std::ops::ControlFlow;
 
-use marelle_core::Role;
+use marelle_core::{Role, ToolCall};
 use serde_json::{Map, Value, json};
 
 use crate::chat::{ChatOutcome, ChatRequest, Collector, FinishReason, Sink, Usage};
@@ -47,13 +47,34 @@ pub(crate) fn build_body(
         match message.role {
             Role::System => system.push(&message.content),
             Role::User => messages.push(json!({ "role": "user", "content": message.content })),
-            Role::Assistant => {
+            Role::Assistant if message.tool_calls.is_empty() => {
                 messages.push(json!({ "role": "assistant", "content": message.content }));
             }
+            Role::Assistant => {
+                let mut content = Vec::new();
+                if !message.content.is_empty() {
+                    content.push(json!({ "type": "text", "text": message.content }));
+                }
+                for call in &message.tool_calls {
+                    let input = serde_json::from_str::<Value>(&call.arguments).unwrap_or_else(|_| json!({}));
+                    content.push(json!({
+                        "type": "tool_use",
+                        "id": call.id,
+                        "name": call.name,
+                        "input": input
+                    }));
+                }
+                messages.push(json!({ "role": "assistant", "content": content }));
+            }
             Role::Tool => {
-                return Err(ProviderError::Unsupported {
-                    detail: "tool messages".to_owned(),
-                });
+                messages.push(json!({
+                    "role": "user",
+                    "content": [{
+                        "type": "tool_result",
+                        "tool_use_id": message.tool_call_id.as_deref().unwrap_or_default(),
+                        "content": message.content
+                    }]
+                }));
             }
         }
     }
@@ -71,6 +92,13 @@ pub(crate) fn build_body(
     }
     if let Some(temperature) = request.temperature {
         body.insert("temperature".to_owned(), json!(temperature));
+    }
+    if !request.tools.is_empty() {
+        body.insert("tools".to_owned(), Value::Array(request.tools.iter().map(|tool| json!({
+            "name": tool.name,
+            "description": tool.description,
+            "input_schema": tool.parameters
+        })).collect()));
     }
     merge_extra(&mut body, &provider.extra_body);
     Ok(Value::Object(body))
@@ -240,6 +268,19 @@ impl Decode for Decoder {
             let flow = match block.get("type").and_then(Value::as_str) {
                 Some("text") => self.text(block.get("text"), sink),
                 Some("thinking") => self.thinking(block.get("thinking"), sink),
+                Some("tool_use") => {
+                    let id = block.get("id").and_then(Value::as_str);
+                    let name = block.get("name").and_then(Value::as_str);
+                    if let (Some(id), Some(name)) = (id, name) {
+                        let input = block.get("input").cloned().unwrap_or_else(|| json!({}));
+                        self.collector.tool_calls.push(ToolCall {
+                            id: id.to_owned(),
+                            name: name.to_owned(),
+                            arguments: input.to_string(),
+                        });
+                    }
+                    ControlFlow::Continue(())
+                }
                 _ => ControlFlow::Continue(()),
             };
             if flow.is_break() {
@@ -291,6 +332,7 @@ mod tests {
             max_tokens: None,
             temperature: Some(0.2),
             stream: true,
+            tools: Vec::new(),
         }
     }
 
