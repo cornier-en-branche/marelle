@@ -295,6 +295,7 @@ fn plan(
 }
 
 /// What to send as the system prompt.
+#[derive(Clone)]
 enum SystemChoice {
     /// Whatever the model's alias chose, or the global setting.
     Default,
@@ -316,8 +317,10 @@ impl SystemChoice {
     }
 }
 
-/// The conversation so far, and what an interactive session may change.
-struct Conversation {
+/// A conversation stored while another session is active.
+#[derive(Clone)]
+struct SavedSession {
+    name: String,
     session: Session,
     model: String,
     provider_override: Option<String>,
@@ -327,7 +330,91 @@ struct Conversation {
     system: SystemChoice,
 }
 
+/// The conversation so far, and what an interactive session may change.
+struct Conversation {
+    session: Session,
+    session_name: String,
+    saved_sessions: Vec<SavedSession>,
+    next_session_id: usize,
+    model: String,
+    provider_override: Option<String>,
+    compare: Vec<String>,
+    fallback: Vec<String>,
+    judge: Option<String>,
+    system: SystemChoice,
+}
+
 impl Conversation {
+    fn snapshot(&self) -> SavedSession {
+        SavedSession {
+            name: self.session_name.clone(),
+            session: self.session.clone(),
+            model: self.model.clone(),
+            provider_override: self.provider_override.clone(),
+            compare: self.compare.clone(),
+            fallback: self.fallback.clone(),
+            judge: self.judge.clone(),
+            system: self.system.clone(),
+        }
+    }
+
+    fn save_current(&mut self) {
+        let snapshot = self.snapshot();
+        if let Some(existing) = self
+            .saved_sessions
+            .iter_mut()
+            .find(|session| session.name == self.session_name)
+        {
+            *existing = snapshot;
+        } else {
+            self.saved_sessions.push(snapshot);
+        }
+        if self.saved_sessions.len() > 20 {
+            self.saved_sessions.remove(0);
+        }
+    }
+
+    fn new_session(&mut self) {
+        self.save_current();
+        self.session = Session::new();
+        self.session_name = format!("Chat {}", self.next_session_id);
+        self.next_session_id += 1;
+    }
+
+    fn switch_session(&mut self, name: &str) -> bool {
+        if name == self.session_name {
+            return true;
+        }
+        let Some(index) = self
+            .saved_sessions
+            .iter()
+            .position(|session| session.name == name)
+        else {
+            return false;
+        };
+        let next = self.saved_sessions.remove(index);
+        self.save_current();
+        self.session_name = next.name;
+        self.session = next.session;
+        self.model = next.model;
+        self.provider_override = next.provider_override;
+        self.compare = next.compare;
+        self.fallback = next.fallback;
+        self.judge = next.judge;
+        self.system = next.system;
+        true
+    }
+
+    fn session_names(&self) -> Vec<String> {
+        let mut names = vec![self.session_name.clone()];
+        names.extend(
+            self.saved_sessions
+                .iter()
+                .map(|session| session.name.clone()),
+        );
+        names
+    }
+
     /// What to show for the models in play. The launch model loses the
     /// provider prefix it was written with, as the panel has its own row.
     fn display_model(&self, plan: &Plan) -> String {
@@ -383,6 +470,9 @@ pub(crate) fn run(
         .build()?;
     let mut conversation = Conversation {
         session: Session::new(),
+        session_name: "Chat 1".to_owned(),
+        saved_sessions: Vec::new(),
+        next_session_id: 2,
         model: plan
             .primary
             .as_ref()
