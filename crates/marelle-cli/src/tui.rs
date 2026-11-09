@@ -7,6 +7,7 @@
 //! scrolling, command completion and rendering. Crossterm is used only as a
 //! terminal driver for raw mode, keyboard events and screen control.
 
+use std::collections::VecDeque;
 use std::io::{self, Stdout, Write, stdout};
 
 use crossterm::cursor::{Hide, MoveTo, Show};
@@ -57,7 +58,7 @@ pub(crate) struct Tui {
     status: String,
     input: String,
     cursor: usize,
-    history: Vec<String>,
+    history: VecDeque<String>,
     history_index: Option<usize>,
     history_draft: String,
     messages: Vec<UiMessage>,
@@ -95,7 +96,7 @@ impl Tui {
             status: "Ready".to_owned(),
             input: String::new(),
             cursor: 0,
-            history: Vec::new(),
+            history: VecDeque::new(),
             history_index: None,
             history_draft: String::new(),
             messages: Vec::new(),
@@ -227,9 +228,9 @@ impl Tui {
                 self.cursor = 0;
                 self.reset_history_navigation();
                 if !line.trim().is_empty() {
-                    self.history.push(line.clone());
+                    self.history.push_back(line.clone());
                     if self.history.len() > MAX_HISTORY {
-                        self.history.remove(0);
+                        self.history.pop_front();
                     }
                     self.render()?;
                     return Ok(InputAction::Submit(line));
