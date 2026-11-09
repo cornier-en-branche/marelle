@@ -41,7 +41,7 @@ marelle chat -m zai/MODEL "Explain hopscotch in one sentence"
 Replace `MODEL` with a model name from your provider's list. Other ways to use it:
 
 ```sh
-marelle chat -m zai/MODEL                            # interactive session: /help, /clear, /model, /system, /exit
+marelle chat -m zai/MODEL                            # interactive TUI: /help, /model, /provider, /session, Ctrl+P
 git diff | marelle chat -m zai/MODEL "Review this:" -   # "-" stands for what was piped in
 marelle chat -p anthropic -m MODEL --show-usage --show-reasoning "Why is the sky blue?"
 ```
@@ -116,7 +116,7 @@ The interface speaks English, Russian, French and Ukrainian. Choose with `--lang
 2. **Settings and look.** TOML setting files, global and per project, with `config set`, `get` and `unset` and a description for every key. A themed interface in the spirit of [Hermes Agent](https://github.com/NousResearch/hermes-agent): banner, information panel, framed answers, spinner, in wisteria purple by default with any colour settable as HEX. *Done.*
 3. **Many models.** Model aliases, asking several models at once and comparing the answers, fallback chains, and a judge model that merges them. *Done.*
 4. **Act.** A tool loop, built-in tools and a permission policy: allow, ask or deny.
-5. **Remember.** Sessions and memory.
+5. **Remember.** In-memory named conversations are available in the interactive TUI. Persistent session storage and memory are still ahead.
 6. **Extend.** MCP, plugins and skills.
 7. **Reach.** Gateways and scheduled tasks.
 
@@ -124,9 +124,11 @@ The reasoning behind the design is in [docs/ARCHITECTURE.md](docs/ARCHITECTURE.m
 
 ## Known limits
 
-- The interactive session has no line editing or history beyond what the terminal gives.
-- Ctrl-C ends the program, not just the current answer.
-- Tools and the agent loop are not there yet (Act is next).
+- Named conversations live in memory for the current process only; exiting Marelle discards them.
+- Provider and model selectors list configured providers and model aliases. Marelle does not yet discover remote model catalogs.
+- Selectors and the command palette are keyboard-driven; mouse interaction is not implemented yet.
+- Ctrl-C exits the interactive session. It does not yet cancel only the current response.
+- Tools and the agent loop are not implemented yet (Act is next).
 
 ## Development
 
