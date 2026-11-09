@@ -26,7 +26,7 @@ use crate::args::ChatArgs;
 use crate::messages::{Failure, config_failure, provider_failure, setting_failure};
 use crate::settings::{build_config, env_lookup};
 use crate::theme::{self, Role as ThemeRole, Theme};
-use crate::tui::{InputAction, Tui};
+use crate::tui::{InputAction, SelectorItem, Tui};
 
 const OK: u8 = 0;
 
@@ -320,6 +320,7 @@ impl SystemChoice {
 struct Conversation {
     session: Session,
     model: String,
+    provider_override: Option<String>,
     compare: Vec<String>,
     fallback: Vec<String>,
     judge: Option<String>,
@@ -386,6 +387,7 @@ pub(crate) fn run(
             .primary
             .as_ref()
             .map_or_else(String::new, |target| target.reference.clone()),
+        provider_override: None,
         compare: plan.compare.clone(),
         fallback: plan.fallback.clone(),
         judge: plan.judge.clone(),
@@ -503,10 +505,11 @@ fn single_turn(
         )?;
     }
     let spinner = interactive && plan.ui.spinner && io.color;
-    let provider_hint = plan
-        .primary
-        .as_ref()
-        .map(|target| target.provider_name.clone());
+    let provider_hint = conversation.provider_override.clone().or_else(|| {
+        plan.primary
+            .as_ref()
+            .map(|target| target.provider_name.clone())
+    });
     let known = provider_names(&plan.config);
     let messages = conversation.session.messages().to_vec();
     let lookup = |name: &str| env_lookup(env_vars, name);
@@ -650,8 +653,14 @@ fn compare_turn(
             (0..references.len()).map(|_| None).collect();
         let mut tasks = JoinSet::new();
         for (index, reference) in references.iter().enumerate() {
-            let target =
-                match resolve_target(&plan.config, locale, &lookup, reference, None, &plan.chat) {
+            let target = match resolve_target(
+                &plan.config,
+                locale,
+                &lookup,
+                reference,
+                conversation.provider_override.as_deref(),
+                &plan.chat,
+            ) {
                     Ok(target) => target,
                     Err(failure) => {
                         slots[index] = Some(Err(failure));
@@ -739,7 +748,14 @@ fn compare_turn(
         .join("\n\n");
 
     if let Some(reference) = conversation.judge.clone() {
-        match resolve_target(&plan.config, locale, &lookup, &reference, None, &plan.chat) {
+        match resolve_target(
+            &plan.config,
+            locale,
+            &lookup,
+            &reference,
+            conversation.provider_override.as_deref(),
+            &plan.chat,
+        ) {
             Ok(target) => {
                 let question = conversation
                     .session
