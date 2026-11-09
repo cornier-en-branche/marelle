@@ -62,6 +62,7 @@ pub(crate) struct Tui {
     output: Stdout,
     theme: Theme,
     color: bool,
+    session_name: String,
     provider: String,
     model: String,
     status: String,
@@ -100,6 +101,7 @@ impl Tui {
             output,
             theme,
             color,
+            session_name: "Chat 1".to_owned(),
             provider,
             model,
             status: "Ready".to_owned(),
@@ -118,6 +120,11 @@ impl Tui {
     pub(crate) fn set_model(&mut self, provider: String, model: String) -> io::Result<()> {
         self.provider = provider;
         self.model = model;
+        self.render()
+    }
+
+    pub(crate) fn set_session(&mut self, name: String) -> io::Result<()> {
+        self.session_name = name;
         self.render()
     }
 
@@ -592,6 +599,7 @@ impl Tui {
             "/model",
             "/provider",
             "/quit",
+            "/session",
             "/system",
         ];
         let matches: Vec<&str> = COMMANDS
@@ -646,7 +654,10 @@ impl Tui {
         queue!(self.output, MoveTo(0, 0), Clear(ClearType::All))?;
         self.draw_line(
             0,
-            &format!("╭─ Marelle {VERSION} ── {} / {}", self.provider, self.model),
+            &format!(
+                "╭─ Marelle {VERSION} · {} ── {} / {}",
+                self.session_name, self.provider, self.model
+            ),
             ThemeRole::Banner,
             width,
         )?;
@@ -899,6 +910,7 @@ fn command_hint(input: &str) -> String {
         "/model",
         "/provider",
         "/quit",
+        "/session",
         "/system",
     ]
     .into_iter()
@@ -960,6 +972,7 @@ mod tests {
             theme: Theme::default(),
             color: false,
             provider: "zai".to_owned(),
+            session_name: "Chat 1".to_owned(),
             model: "glm-4.7-flash".to_owned(),
             status: "Ready".to_owned(),
             input: String::new(),
