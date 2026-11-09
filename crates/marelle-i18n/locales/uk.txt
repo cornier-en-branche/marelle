@@ -64,7 +64,7 @@ chat.judge.header = суддя: {label}
 
 # --- інтерактивний сеанс ---
 repl.banner = {provider} / {model} - /help покаже команди, /exit завершить сеанс
-repl.help = Команди: /help  /clear  /model [назва]  /compare [моделі|off]  /fallback [моделі|off]  /judge [модель|off]  /system [текст|off]  /exit
+repl.help = Команди: /help  /clear  /model [назва]  /provider [id|off]  /session [new|назва]  /compare [моделі|off]  /fallback [моделі|off]  /judge [модель|off]  /system [текст|off]  /exit  ·  Ctrl+P — палітра команд
 repl.cleared = Розмову очищено.
 repl.model = Модель: {model}
 repl.model_set = Модель переключено на {model}.
