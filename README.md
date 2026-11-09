@@ -165,11 +165,10 @@ The reasoning behind the design is in [docs/ARCHITECTURE.md](docs/ARCHITECTURE.m
 
 ## Known limits
 
-- Named conversations live in memory for the current process only; exiting Marelle discards them.
 - Provider and model selectors list configured providers and model aliases. Marelle does not yet discover remote model catalogs.
 - Selectors support mouse click-to-focus and wheel scrolling; the transcript and input editor remain keyboard-driven.
 - Ctrl-C exits the interactive session. It does not yet cancel only the current response.
-- Tools and the agent loop are not implemented yet (Act is next).
+- The agent loop, permission-aware local tools and persistent local sessions are implemented, but Marelle remains a pre-alpha prototype; see [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) for the current design and boundaries.
 
 ## Development
 
@@ -179,7 +178,7 @@ cargo clippy --workspace --all-targets -- -D warnings
 cargo fmt --all
 ```
 
-Tests never touch the network: they talk to a mock server in `crates/marelle-testkit`. CI also builds the Android binaries and checks the declared minimum Rust version.
+Tests never touch the network: they talk to a mock server in `crates/marelle-testkit`. GitHub Actions also builds the Android binaries and checks the declared minimum Rust version. A GitLab CI pipeline is provided for a GitLab mirror; see [docs/GITLAB.md](docs/GITLAB.md).
 
 ## License
 
