@@ -12,8 +12,8 @@ use std::io::{self, Stdout, Write, stdout};
 
 use crossterm::cursor::{Hide, MoveTo, Show};
 use crossterm::event::{
-    self, DisableBracketedPaste, EnableBracketedPaste, Event, KeyCode, KeyEvent, KeyEventKind,
-    KeyModifiers,
+    self, DisableBracketedPaste, DisableMouseCapture, EnableBracketedPaste, EnableMouseCapture,
+    Event, KeyCode, KeyEvent, KeyEventKind, KeyModifiers, MouseButton, MouseEventKind,
 };
 use crossterm::execute;
 use crossterm::queue;
@@ -90,6 +90,7 @@ impl Tui {
             output,
             EnterAlternateScreen,
             EnableBracketedPaste,
+            EnableMouseCapture,
             Hide,
             Clear(ClearType::All)
         ) {
@@ -154,6 +155,25 @@ impl Tui {
             self.render_selector(title, items, selected)?;
             match event::read()? {
                 Event::Resize(_, _) => {}
+                Event::Mouse(mouse) => match mouse.kind {
+                    MouseEventKind::ScrollUp => selected = selected.saturating_sub(1),
+                    MouseEventKind::ScrollDown => {
+                        selected = (selected + 1).min(items.len() - 1);
+                    }
+                    MouseEventKind::Down(MouseButton::Left) => {
+                        let (_, height) = terminal::size().unwrap_or((80, 24));
+                        let visible = usize::from(height).saturating_sub(7).max(1);
+                        if let Some(index) = selector_index_at_row(
+                            usize::from(mouse.row),
+                            selected,
+                            items.len(),
+                            visible,
+                        ) {
+                            selected = index;
+                        }
+                    }
+                    _ => {}
+                },
                 Event::Key(key)
                     if matches!(key.kind, KeyEventKind::Press | KeyEventKind::Repeat) =>
                 {
@@ -212,7 +232,7 @@ impl Tui {
         self.draw_line(0, &format!("╭─ {title}"), ThemeRole::Banner, width)?;
         self.draw_line(
             1,
-            "│ ↑↓ navigate · Enter select · Esc cancel · Home/End jump",
+            "│ ↑↓ or wheel navigate · click to focus · Enter select · Esc cancel",
             ThemeRole::Dim,
             width,
         )?;
@@ -769,6 +789,7 @@ impl Drop for Tui {
         let _ = execute!(
             self.output,
             DisableBracketedPaste,
+            DisableMouseCapture,
             Show,
             LeaveAlternateScreen
         );
@@ -790,6 +811,24 @@ impl Write for AnswerWriter<'_> {
     fn flush(&mut self) -> io::Result<()> {
         self.tui.render()
     }
+}
+
+fn selector_index_at_row(
+    row: usize,
+    selected: usize,
+    item_count: usize,
+    visible: usize,
+) -> Option<usize> {
+    if row < 3 || visible == 0 {
+        return None;
+    }
+    let content_row = row - 3;
+    if content_row >= visible {
+        return None;
+    }
+    let scroll = selected.saturating_sub(visible.saturating_sub(1));
+    let index = scroll + content_row;
+    (index < item_count).then_some(index)
 }
 
 fn byte_index(text: &str, character_index: usize) -> usize {
@@ -922,6 +961,16 @@ fn command_hint(input: &str) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn selector_mouse_rows_map_to_the_visible_items() {
+        assert_eq!(selector_index_at_row(2, 0, 20, 10), None);
+        assert_eq!(selector_index_at_row(3, 0, 20, 10), Some(0));
+        assert_eq!(selector_index_at_row(8, 0, 20, 10), Some(5));
+        assert_eq!(selector_index_at_row(13, 0, 20, 10), None);
+        assert_eq!(selector_index_at_row(3, 12, 20, 10), Some(3));
+        assert_eq!(selector_index_at_row(12, 12, 20, 10), Some(12));
+    }
 
     #[test]
     fn editor_byte_offsets_are_unicode_safe() {
