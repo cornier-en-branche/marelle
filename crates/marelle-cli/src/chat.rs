@@ -461,6 +461,230 @@ impl Conversation {
     }
 }
 
+/// The on-disk representation deliberately excludes provider credentials.
+/// It contains only conversation messages and the settings needed to resume.
+fn encode_message(message: &Message) -> Value {
+    let role = match message.role {
+        Role::System => "system",
+        Role::User => "user",
+        Role::Assistant => "assistant",
+        Role::Tool => "tool",
+    };
+    json!({
+        "role": role,
+        "content": message.content,
+        "name": message.name,
+        "tool_call_id": message.tool_call_id,
+        "tool_calls": message.tool_calls.iter().map(|call| json!({
+            "id": call.id,
+            "name": call.name,
+            "arguments": call.arguments
+        })).collect::<Vec<_>>()
+    })
+}
+
+fn decode_message(value: &Value) -> Option<Message> {
+    let role = match value.get("role")?.as_str()? {
+        "system" => Role::System,
+        "user" => Role::User,
+        "assistant" => Role::Assistant,
+        "tool" => Role::Tool,
+        _ => return None,
+    };
+    let mut message = Message::new(role, value.get("content")?.as_str()?);
+    message.name = value.get("name").and_then(Value::as_str).map(str::to_owned);
+    message.tool_call_id = value.get("tool_call_id").and_then(Value::as_str).map(str::to_owned);
+    message.tool_calls = value
+        .get("tool_calls")
+        .and_then(Value::as_array)
+        .into_iter()
+        .flatten()
+        .map(|call| {
+            Some(ToolCall {
+                id: call.get("id")?.as_str()?.to_owned(),
+                name: call.get("name")?.as_str()?.to_owned(),
+                arguments: call.get("arguments")?.as_str()?.to_owned(),
+            })
+        })
+        .collect::<Option<Vec<_>>>()?;
+    Some(message)
+}
+
+fn encode_system(system: &SystemChoice) -> Value {
+    match system {
+        SystemChoice::Default => json!({"kind": "default"}),
+        SystemChoice::Off => json!({"kind": "off"}),
+        SystemChoice::Text(text) => json!({"kind": "text", "value": text}),
+    }
+}
+
+fn decode_system(value: &Value) -> Option<SystemChoice> {
+    match value.get("kind")?.as_str()? {
+        "default" => Some(SystemChoice::Default),
+        "off" => Some(SystemChoice::Off),
+        "text" => Some(SystemChoice::Text(value.get("value")?.as_str()?.to_owned())),
+        _ => None,
+    }
+}
+
+fn encode_saved_session(session: &SavedSession) -> Value {
+    json!({
+        "name": session.name,
+        "messages": session.session.messages().iter().map(encode_message).collect::<Vec<_>>(),
+        "model": session.model,
+        "provider_override": session.provider_override,
+        "compare": session.compare,
+        "fallback": session.fallback,
+        "judge": session.judge,
+        "system": encode_system(&session.system)
+    })
+}
+
+fn decode_saved_session(value: &Value) -> Option<SavedSession> {
+    let mut session = Session::new();
+    let messages = value.get("messages")?.as_array()?;
+    for message in messages {
+        session.push(decode_message(message)?);
+    }
+    Some(SavedSession {
+        name: value.get("name")?.as_str()?.to_owned(),
+        session,
+        model: value.get("model")?.as_str()?.to_owned(),
+        provider_override: value.get("provider_override").and_then(Value::as_str).map(str::to_owned),
+        compare: value.get("compare")?.as_array()?.iter()
+            .map(|item| item.as_str().map(str::to_owned)).collect::<Option<Vec<_>>>()?,
+        fallback: value.get("fallback")?.as_array()?.iter()
+            .map(|item| item.as_str().map(str::to_owned)).collect::<Option<Vec<_>>>()?,
+        judge: value.get("judge").and_then(Value::as_str).map(str::to_owned),
+        system: decode_system(value.get("system")?)?,
+    })
+}
+
+fn session_store_path(env_vars: &[(String, String)]) -> Option<PathBuf> {
+    let state = env_lookup(env_vars, "XDG_STATE_HOME")
+        .filter(|value| !value.trim().is_empty())
+        .map(PathBuf::from)
+        .or_else(|| {
+            env_lookup(env_vars, "HOME")
+                .filter(|value| !value.trim().is_empty())
+                .map(|home| PathBuf::from(home).join(".local").join("state"))
+        })?;
+    Some(state.join("marelle").join("sessions.json"))
+}
+
+fn sessions_enabled(config: &Config) -> bool {
+    config.get_bool("agent.persist_sessions").ok().flatten().unwrap_or(true)
+}
+
+fn restore_session_store(
+    env_vars: &[(String, String)],
+    config: &Config,
+    conversation: &mut Conversation,
+    continue_session: bool,
+) -> io::Result<bool> {
+    if !sessions_enabled(config) {
+        return Ok(false);
+    }
+    let Some(path) = session_store_path(env_vars) else {
+        return Ok(false);
+    };
+    let text = match fs::read_to_string(&path) {
+        Ok(text) => text,
+        Err(error) if error.kind() == io::ErrorKind::NotFound => return Ok(false),
+        Err(error) => return Err(error),
+    };
+    if text.len() > 32 * 1024 * 1024 {
+        return Err(io::Error::new(io::ErrorKind::InvalidData, "session store exceeds 32 MiB"));
+    }
+    let value: Value = serde_json::from_str(&text)
+        .map_err(|_| io::Error::new(io::ErrorKind::InvalidData, "session store is not valid JSON"))?;
+    if value.get("version").and_then(Value::as_u64) != Some(1) {
+        return Err(io::Error::new(io::ErrorKind::InvalidData, "unsupported session store version"));
+    }
+    let active = value.get("active").and_then(decode_saved_session)
+        .ok_or_else(|| io::Error::new(io::ErrorKind::InvalidData, "active session is invalid"))?;
+    let mut saved = value.get("saved").and_then(Value::as_array)
+        .map(|items| items.iter().filter_map(decode_saved_session).collect::<Vec<_>>())
+        .unwrap_or_default();
+    let next_id = value.get("next_session_id").and_then(Value::as_u64)
+        .and_then(|number| usize::try_from(number).ok()).unwrap_or(2).max(2);
+
+    if continue_session {
+        conversation.session = active.session;
+        conversation.session_name = active.name;
+        conversation.model = active.model;
+        conversation.provider_override = active.provider_override;
+        conversation.compare = active.compare;
+        conversation.fallback = active.fallback;
+        conversation.judge = active.judge;
+        conversation.system = active.system;
+        conversation.saved_sessions = saved;
+        conversation.next_session_id = next_id;
+    } else {
+        saved.retain(|session| session.name != active.name);
+        if !active.session.is_empty() {
+            saved.insert(0, active);
+        }
+        if saved.len() > 20 {
+            saved.truncate(20);
+        }
+        conversation.saved_sessions = saved;
+        conversation.session_name = format!("Chat {next_id}");
+        conversation.next_session_id = next_id.saturating_add(1);
+    }
+    Ok(true)
+}
+
+fn persist_session_store(
+    env_vars: &[(String, String)],
+    config: &Config,
+    conversation: &Conversation,
+) -> io::Result<()> {
+    if !sessions_enabled(config) {
+        return Ok(());
+    }
+    let Some(path) = session_store_path(env_vars) else {
+        return Ok(());
+    };
+    let parent = path.parent().ok_or_else(|| {
+        io::Error::new(io::ErrorKind::InvalidInput, "session store has no parent directory")
+    })?;
+    fs::create_dir_all(parent)?;
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        fs::set_permissions(parent, fs::Permissions::from_mode(0o700))?;
+    }
+
+    let active = conversation.snapshot();
+    let value = json!({
+        "version": 1,
+        "next_session_id": conversation.next_session_id,
+        "active": encode_saved_session(&active),
+        "saved": conversation.saved_sessions.iter().map(encode_saved_session).collect::<Vec<_>>()
+    });
+    let temporary = path.with_extension("json.tmp");
+    let mut options = OpenOptions::new();
+    options.create(true).truncate(true).write(true);
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::OpenOptionsExt;
+        options.mode(0o600);
+    }
+    let mut file = options.open(&temporary)?;
+    serde_json::to_writer(&mut file, &value)
+        .map_err(|error| io::Error::other(error.to_string()))?;
+    file.write_all(b"\n")?;
+    file.sync_all()?;
+    fs::rename(&temporary, &path)?;
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        fs::set_permissions(&path, fs::Permissions::from_mode(0o600))?;
+    }
+    Ok(())
+}
+
 /// Runs the command and returns the exit code.
 pub(crate) fn run(
     args: ChatArgs,
