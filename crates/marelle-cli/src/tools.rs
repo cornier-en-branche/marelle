@@ -589,7 +589,7 @@ pub(crate) fn execute(
 
 /// Reads the project's local instructions. These files are data, not trusted
 /// code; their contents are included only as user-provided context.
-pub(crate) fn project_context() -> String {
+pub(crate) fn project_context(config: &Config) -> String {
     let cwd = match std::env::current_dir() {
         Ok(path) => path,
         Err(_) => return String::new(),
@@ -603,7 +603,10 @@ pub(crate) fn project_context() -> String {
         ".marelle/AGENTS.md",
         ".marelle/CONTEXT.md",
     ] {
-        let path = cwd.join(relative);
+        let candidate = cwd.join(relative);
+        let Ok(path) = checked_path(candidate.to_str().unwrap_or_default(), config, true) else {
+            continue;
+        };
         let Ok(metadata) = fs::metadata(&path) else { continue };
         if !metadata.is_file() || metadata.len() > 32 * 1024 {
             continue;
