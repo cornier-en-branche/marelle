@@ -1,18 +1,119 @@
 # Сообщения интерфейса Marelle (русский).
 # Формат: ключ = значение. Строки, начинающиеся с #, — комментарии.
+# Текст в фигурных скобках подставляется программой и должен остаться как есть.
+
 app.tagline = Настраиваемый ИИ-агент для вашего терминала
+
+# --- справка ---
 help.usage = Использование
-help.usage.line = marelle [--lang <код>] <команда>
+help.usage.line = marelle [--lang <код>] <команда> [параметры]
 help.commands = Команды
+help.cmd.chat = Разговор с моделью: один вопрос, конвейер или интерактивный сеанс
+help.cmd.providers = Список провайдеров и откуда берутся их API-ключи
+help.cmd.config = Просмотр настроек: config show [префикс], config explain <ключ>
 help.cmd.help = Показать эту справку
 help.cmd.version = Показать версию
-help.cmd.providers = Список поддерживаемых типов провайдеров
-help.cmd.config = Показать, откуда взята настройка: config explain <ключ>
-help.options = Параметры
-help.opt.lang = Язык интерфейса: en, ru, fr
+help.chat_options = Параметры chat
+help.opt.provider = Идентификатор провайдера (см.: marelle providers)
+help.opt.model = Название модели или провайдер/модель, если провайдер не выбран
+help.opt.system = Системный промпт
+help.opt.max_tokens = Ограничить длину ответа, в токенах
+help.opt.temperature = Температура выборки
+help.opt.no_stream = Дождаться всего ответа, а не получать его потоком
+help.opt.show_reasoning = Показывать рассуждения модели в stderr, если она их присылает
+help.opt.show_usage = Показывать число токенов в stderr
+help.options = Общие параметры
+help.opt.lang = Язык интерфейса: en, ru, fr, uk
+help.examples = Примеры
+help.example.ask = Задать один вопрос
+help.example.pipe = Передать вывод команды вместе с вопросом («-» означает stdin)
+help.example.repl = Запустить интерактивный сеанс
+help.env = Любую настройку можно задать и через окружение: MARELLE_CHAT__MODEL=zai/MODEL задаёт chat.model.
+help.exit_codes = Коды выхода: 0 — успех, 1 — ошибка провайдера или сети, 2 — ошибка в вызове или в настройках.
+
+# --- командная строка ---
 error.unknown_command = Неизвестная команда
 error.unknown_lang = Неизвестный язык
 error.missing_key = Не указан ключ настройки. Использование: marelle config explain <ключ>
+error.unknown_option = Неизвестный параметр: {name}
+error.needs_value = Параметру {name} нужно значение.
+
+# --- настройки ---
 config.not_set = не задано
 config.effective = действующее значение
 config.history = история (от низшего приоритета к высшему)
+config.show.empty = Подходящих настроек нет.
+
+# --- chat ---
+chat.no_provider = Провайдер не выбран. Укажите --provider <id>, напишите --model <провайдер>/<модель> или задайте chat.provider.
+chat.no_model = Модель не выбрана. Укажите --model <название> или задайте chat.model.
+chat.empty_prompt = Отправлять нечего: запрос пуст.
+chat.empty_answer = (Модель прислала пустой ответ.)
+chat.cut.length = (Ответ оборван из-за ограничения длины. Увеличьте его через --max-tokens.)
+chat.cut.filter = (Фильтр содержимого провайдера остановил ответ.)
+chat.cut.tools = (Модель попросила вызвать инструмент, а Marelle пока этого не умеет.)
+chat.usage = токены: {parts}
+chat.usage.in = {n} на входе
+chat.usage.out = {n} на выходе
+chat.usage.cached = {n} из кэша
+chat.usage.reasoning = {n} на рассуждения
+
+# --- интерактивный сеанс ---
+repl.banner = {provider} / {model} - /help покажет команды, /exit завершит сеанс
+repl.help = Команды: /help  /clear  /model [название]  /system [текст|off]  /exit
+repl.cleared = Разговор очищен.
+repl.model = Модель: {model}
+repl.model_set = Модель переключена на {model}.
+repl.system = Системный промпт: {text}
+repl.system_none = Системного промпта нет.
+repl.system_set = Системный промпт задан.
+repl.system_cleared = Системный промпт убран.
+repl.unknown = Неизвестная команда {name}. Наберите /help.
+
+# --- таблица провайдеров ---
+providers.col.name = Провайдер
+providers.col.protocol = Протокол
+providers.col.address = Адрес
+providers.col.key = API-ключ
+providers.key.set = задан
+providers.key.not_set = не задан
+providers.key.found = найден
+providers.key.missing = не найден
+providers.key.none = ключ не нужен
+providers.file = файл {path}
+providers.broken = непригоден: {reason}
+providers.hint = Использовать: marelle chat --provider <имя> --model <модель>
+
+# --- что может содержать настройка ---
+expected.bool = true или false
+expected.whole_number = целое число
+expected.positive_whole_number = целое число больше нуля
+expected.number = число
+expected.env_name = имя переменной окружения
+expected.url = URL с http или https
+expected.proxy = system, none или URL прокси (http или https)
+expected.json_object = JSON-объект
+expected.one_of = одно из: {values}
+
+# --- сбои ---
+fail.setting = Параметр {key}: ожидается {expected}.
+fail.missing_setting = Параметр {key} обязателен.
+fail.secret_in_settings = Параметр {key} не должен хранить секрет. Положите ключ в переменную окружения или в файл и укажите его через api_key_env или api_key_file.
+fail.unknown_provider = Неизвестный провайдер «{name}». Известные: {known}.
+fail.no_api_key = Нет API-ключа: переменная окружения {env} не задана или пуста.
+fail.api_key_file = Не удалось прочитать файл с API-ключом {path}: {reason}
+fail.invalid_api_key = В API-ключе есть символы, которые нельзя передать в заголовке HTTP.
+fail.insecure = Отказываюсь отправлять API-ключ по обычному http на {host}. Используйте https или задайте network.allow_insecure_http=true.
+fail.unsupported = Пока не поддерживается: {detail}
+fail.ca_bundle = В {source} нет пригодных сертификатов.
+fail.ca_bundle_file = Не удалось прочитать набор сертификатов {path}: {reason}
+fail.http = Провайдер ответил HTTP {status}: {message}
+fail.hint.auth = Проверьте API-ключ и аккаунт, к которому он относится.
+fail.hint.not_found = Проверьте название модели и адрес провайдера.
+fail.hint.rate = Исчерпан лимит запросов или квота. Подождите немного или проверьте тариф.
+fail.hint.server = У провайдера неполадки. Попробуйте позже.
+fail.api = Провайдер сообщил об ошибке: {message}
+fail.transport = Не удалось связаться с провайдером: {detail}
+fail.timeout = Провайдер не ответил вовремя. Предел задаёт network.idle_timeout_secs.
+fail.protocol = Ответ провайдера не удалось разобрать: {detail}
+fail.input = Не удалось прочитать запрос: {reason}

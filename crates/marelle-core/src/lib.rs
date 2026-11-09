@@ -52,6 +52,16 @@ impl Session {
         self.messages.push(message);
     }
 
+    /// Removes and returns the last message.
+    pub fn pop(&mut self) -> Option<Message> {
+        self.messages.pop()
+    }
+
+    /// Forgets the whole conversation.
+    pub fn clear(&mut self) {
+        self.messages.clear();
+    }
+
     /// The messages so far, oldest first.
     pub fn messages(&self) -> &[Message] {
         &self.messages
@@ -77,6 +87,18 @@ mod tests {
         let session = Session::new();
         assert!(session.is_empty());
         assert_eq!(session.len(), 0);
+    }
+
+    #[test]
+    fn the_last_message_can_be_taken_back_and_the_session_cleared() {
+        let mut session = Session::new();
+        assert_eq!(session.pop(), None);
+        session.push(Message::new(Role::User, "one"));
+        session.push(Message::new(Role::Assistant, "two"));
+        assert_eq!(session.pop(), Some(Message::new(Role::Assistant, "two")));
+        assert_eq!(session.len(), 1);
+        session.clear();
+        assert!(session.is_empty());
     }
 
     #[test]

@@ -1,18 +1,119 @@
 # Marelle interface messages (English, the reference catalog).
 # Format: key = value. Lines starting with # are comments.
+# Text in curly braces is filled in by the program and must stay as it is.
+
 app.tagline = A configurable AI agent for your terminal
+
+# --- help ---
 help.usage = Usage
-help.usage.line = marelle [--lang <code>] <command>
+help.usage.line = marelle [--lang <code>] <command> [options]
 help.commands = Commands
+help.cmd.chat = Talk to a model: one question, a pipe, or an interactive session
+help.cmd.providers = List providers and where their API keys come from
+help.cmd.config = Inspect settings: config show [prefix], config explain <key>
 help.cmd.help = Show this help
 help.cmd.version = Show the version
-help.cmd.providers = List supported provider kinds
-help.cmd.config = Show where a setting comes from: config explain <key>
-help.options = Options
-help.opt.lang = Interface language: en, ru, fr
+help.chat_options = Chat options
+help.opt.provider = Provider id (see: marelle providers)
+help.opt.model = Model name, or provider/model when no provider is chosen
+help.opt.system = System prompt
+help.opt.max_tokens = Limit the answer length, in tokens
+help.opt.temperature = Sampling temperature
+help.opt.no_stream = Wait for the whole answer instead of streaming it
+help.opt.show_reasoning = Show the model's reasoning on stderr, if it sends any
+help.opt.show_usage = Show token counts on stderr
+help.options = Global options
+help.opt.lang = Interface language: en, ru, fr, uk
+help.examples = Examples
+help.example.ask = Ask one question
+help.example.pipe = Send a command's output along with a question ("-" stands for stdin)
+help.example.repl = Start an interactive session
+help.env = Every setting can also come from the environment: MARELLE_CHAT__MODEL=zai/MODEL sets chat.model.
+help.exit_codes = Exit codes: 0 success, 1 provider or network error, 2 usage or configuration error.
+
+# --- command line ---
 error.unknown_command = Unknown command
 error.unknown_lang = Unknown language
 error.missing_key = Missing setting key. Usage: marelle config explain <key>
+error.unknown_option = Unknown option: {name}
+error.needs_value = The option {name} needs a value.
+
+# --- settings ---
 config.not_set = not set
 config.effective = effective value
 config.history = history (lowest to highest priority)
+config.show.empty = No settings match.
+
+# --- chat ---
+chat.no_provider = No provider chosen. Use --provider <id>, write --model <provider>/<model>, or set chat.provider.
+chat.no_model = No model chosen. Use --model <name>, or set chat.model.
+chat.empty_prompt = Nothing to send: the prompt is empty.
+chat.empty_answer = (The model sent an empty answer.)
+chat.cut.length = (The answer was cut off by the length limit. Raise it with --max-tokens.)
+chat.cut.filter = (The provider's content filter stopped the answer.)
+chat.cut.tools = (The model asked to use a tool, which Marelle cannot do yet.)
+chat.usage = tokens: {parts}
+chat.usage.in = {n} in
+chat.usage.out = {n} out
+chat.usage.cached = {n} cached
+chat.usage.reasoning = {n} reasoning
+
+# --- interactive session ---
+repl.banner = {provider} / {model} - /help lists the commands, /exit quits
+repl.help = Commands: /help  /clear  /model [name]  /system [text|off]  /exit
+repl.cleared = Conversation cleared.
+repl.model = Model: {model}
+repl.model_set = Model set to {model}.
+repl.system = System prompt: {text}
+repl.system_none = No system prompt.
+repl.system_set = System prompt set.
+repl.system_cleared = System prompt cleared.
+repl.unknown = Unknown command {name}. Type /help.
+
+# --- the providers table ---
+providers.col.name = Provider
+providers.col.protocol = Protocol
+providers.col.address = Address
+providers.col.key = API key
+providers.key.set = set
+providers.key.not_set = not set
+providers.key.found = found
+providers.key.missing = missing
+providers.key.none = no key needed
+providers.file = file {path}
+providers.broken = unusable: {reason}
+providers.hint = Use one with: marelle chat --provider <name> --model <model>
+
+# --- what a setting may hold ---
+expected.bool = true or false
+expected.whole_number = a whole number
+expected.positive_whole_number = a whole number above zero
+expected.number = a number
+expected.env_name = the name of an environment variable
+expected.url = an http or https URL
+expected.proxy = system, none, or the URL of an http or https proxy
+expected.json_object = a JSON object
+expected.one_of = one of: {values}
+
+# --- failures ---
+fail.setting = Setting {key}: expected {expected}.
+fail.missing_setting = Setting {key} is required.
+fail.secret_in_settings = Setting {key} must not hold a secret. Put the key in an environment variable or a file, and name it with api_key_env or api_key_file.
+fail.unknown_provider = Unknown provider '{name}'. Known providers: {known}.
+fail.no_api_key = No API key: the environment variable {env} is not set or is empty.
+fail.api_key_file = Cannot read the API key file {path}: {reason}
+fail.invalid_api_key = The API key has characters that cannot be sent in an HTTP header.
+fail.insecure = Refusing to send an API key over plain http to {host}. Use https, or set network.allow_insecure_http=true.
+fail.unsupported = Not supported yet: {detail}
+fail.ca_bundle = No usable certificates in {source}.
+fail.ca_bundle_file = Cannot read the CA bundle {path}: {reason}
+fail.http = The provider answered with HTTP {status}: {message}
+fail.hint.auth = Check the API key and the account behind it.
+fail.hint.not_found = Check the model name and the provider's address.
+fail.hint.rate = The rate limit or the quota is used up. Wait a bit, or check your plan.
+fail.hint.server = The provider is having trouble. Try again later.
+fail.api = The provider reported an error: {message}
+fail.transport = Cannot talk to the provider: {detail}
+fail.timeout = The provider did not answer in time. The limit is network.idle_timeout_secs.
+fail.protocol = The provider's answer was not understood: {detail}
+fail.input = Cannot read the prompt: {reason}

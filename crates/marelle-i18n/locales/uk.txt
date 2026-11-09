@@ -1,0 +1,119 @@
+# Повідомлення інтерфейсу Marelle (українська).
+# Формат: ключ = значення. Рядки, що починаються з #, — коментарі.
+# Текст у фігурних дужках підставляє програма, його треба залишити як є.
+
+app.tagline = Налаштовуваний ШІ-агент для вашого термінала
+
+# --- довідка ---
+help.usage = Використання
+help.usage.line = marelle [--lang <код>] <команда> [параметри]
+help.commands = Команди
+help.cmd.chat = Розмова з моделлю: одне запитання, конвеєр або інтерактивний сеанс
+help.cmd.providers = Перелік провайдерів і звідки беруться їхні API-ключі
+help.cmd.config = Перегляд налаштувань: config show [префікс], config explain <ключ>
+help.cmd.help = Показати цю довідку
+help.cmd.version = Показати версію
+help.chat_options = Параметри chat
+help.opt.provider = Ідентифікатор провайдера (див.: marelle providers)
+help.opt.model = Назва моделі або провайдер/модель, якщо провайдера не вибрано
+help.opt.system = Системний промпт
+help.opt.max_tokens = Обмежити довжину відповіді в токенах
+help.opt.temperature = Температура вибірки
+help.opt.no_stream = Дочекатися всієї відповіді, а не отримувати її потоком
+help.opt.show_reasoning = Показувати міркування моделі в stderr, якщо вона їх надсилає
+help.opt.show_usage = Показувати кількість токенів у stderr
+help.options = Загальні параметри
+help.opt.lang = Мова інтерфейсу: en, ru, fr, uk
+help.examples = Приклади
+help.example.ask = Поставити одне запитання
+help.example.pipe = Передати вивід команди разом із запитанням («-» означає stdin)
+help.example.repl = Запустити інтерактивний сеанс
+help.env = Будь-яке налаштування можна задати й через середовище: MARELLE_CHAT__MODEL=zai/MODEL задає chat.model.
+help.exit_codes = Коди виходу: 0 — успіх, 1 — помилка провайдера або мережі, 2 — помилка у виклику чи в налаштуваннях.
+
+# --- командний рядок ---
+error.unknown_command = Невідома команда
+error.unknown_lang = Невідома мова
+error.missing_key = Не вказано ключ налаштування. Використання: marelle config explain <ключ>
+error.unknown_option = Невідомий параметр: {name}
+error.needs_value = Параметру {name} потрібне значення.
+
+# --- налаштування ---
+config.not_set = не задано
+config.effective = чинне значення
+config.history = історія (від найнижчого пріоритету до найвищого)
+config.show.empty = Відповідних налаштувань немає.
+
+# --- chat ---
+chat.no_provider = Провайдера не вибрано. Вкажіть --provider <id>, напишіть --model <провайдер>/<модель> або задайте chat.provider.
+chat.no_model = Моделі не вибрано. Вкажіть --model <назва> або задайте chat.model.
+chat.empty_prompt = Нічого надсилати: запит порожній.
+chat.empty_answer = (Модель надіслала порожню відповідь.)
+chat.cut.length = (Відповідь обірвано через обмеження довжини. Збільште його через --max-tokens.)
+chat.cut.filter = (Фільтр вмісту провайдера зупинив відповідь.)
+chat.cut.tools = (Модель попросила викликати інструмент, а Marelle поки цього не вміє.)
+chat.usage = токени: {parts}
+chat.usage.in = {n} на вході
+chat.usage.out = {n} на виході
+chat.usage.cached = {n} із кешу
+chat.usage.reasoning = {n} на міркування
+
+# --- інтерактивний сеанс ---
+repl.banner = {provider} / {model} - /help покаже команди, /exit завершить сеанс
+repl.help = Команди: /help  /clear  /model [назва]  /system [текст|off]  /exit
+repl.cleared = Розмову очищено.
+repl.model = Модель: {model}
+repl.model_set = Модель переключено на {model}.
+repl.system = Системний промпт: {text}
+repl.system_none = Системного промпту немає.
+repl.system_set = Системний промпт задано.
+repl.system_cleared = Системний промпт прибрано.
+repl.unknown = Невідома команда {name}. Наберіть /help.
+
+# --- таблиця провайдерів ---
+providers.col.name = Провайдер
+providers.col.protocol = Протокол
+providers.col.address = Адреса
+providers.col.key = API-ключ
+providers.key.set = задано
+providers.key.not_set = не задано
+providers.key.found = знайдено
+providers.key.missing = не знайдено
+providers.key.none = ключ не потрібен
+providers.file = файл {path}
+providers.broken = непридатний: {reason}
+providers.hint = Використати: marelle chat --provider <ім'я> --model <модель>
+
+# --- що може містити налаштування ---
+expected.bool = true або false
+expected.whole_number = ціле число
+expected.positive_whole_number = ціле число більше за нуль
+expected.number = число
+expected.env_name = ім'я змінної середовища
+expected.url = URL з http або https
+expected.proxy = system, none або URL проксі (http або https)
+expected.json_object = JSON-об'єкт
+expected.one_of = одне з: {values}
+
+# --- збої ---
+fail.setting = Параметр {key}: очікується {expected}.
+fail.missing_setting = Параметр {key} обов'язковий.
+fail.secret_in_settings = Параметр {key} не повинен зберігати секрет. Покладіть ключ у змінну середовища або у файл і вкажіть його через api_key_env або api_key_file.
+fail.unknown_provider = Невідомий провайдер «{name}». Відомі: {known}.
+fail.no_api_key = Немає API-ключа: змінну середовища {env} не задано або вона порожня.
+fail.api_key_file = Не вдалося прочитати файл з API-ключем {path}: {reason}
+fail.invalid_api_key = В API-ключі є символи, які не можна передати в заголовку HTTP.
+fail.insecure = Відмовляюся надсилати API-ключ звичайним http на {host}. Використайте https або задайте network.allow_insecure_http=true.
+fail.unsupported = Поки не підтримується: {detail}
+fail.ca_bundle = У {source} немає придатних сертифікатів.
+fail.ca_bundle_file = Не вдалося прочитати набір сертифікатів {path}: {reason}
+fail.http = Провайдер відповів HTTP {status}: {message}
+fail.hint.auth = Перевірте API-ключ і акаунт, до якого він належить.
+fail.hint.not_found = Перевірте назву моделі та адресу провайдера.
+fail.hint.rate = Вичерпано ліміт запитів або квоту. Зачекайте трохи або перевірте тариф.
+fail.hint.server = У провайдера негаразди. Спробуйте пізніше.
+fail.api = Провайдер повідомив про помилку: {message}
+fail.transport = Не вдалося зв'язатися з провайдером: {detail}
+fail.timeout = Провайдер не відповів вчасно. Межу задає network.idle_timeout_secs.
+fail.protocol = Відповідь провайдера не вдалося розібрати: {detail}
+fail.input = Не вдалося прочитати запит: {reason}

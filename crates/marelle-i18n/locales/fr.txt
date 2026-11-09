@@ -1,18 +1,119 @@
 # Messages de l'interface de Marelle (français).
 # Format : clé = valeur. Les lignes qui commencent par # sont des commentaires.
+# Le texte entre accolades est rempli par le programme et doit rester tel quel.
+
 app.tagline = Un agent IA configurable pour votre terminal
+
+# --- aide ---
 help.usage = Utilisation
-help.usage.line = marelle [--lang <code>] <commande>
+help.usage.line = marelle [--lang <code>] <commande> [options]
 help.commands = Commandes
+help.cmd.chat = Discuter avec un modèle : une question, un tube ou une session interactive
+help.cmd.providers = Lister les fournisseurs et l'origine de leurs clés d'API
+help.cmd.config = Consulter les réglages : config show [préfixe], config explain <clé>
 help.cmd.help = Afficher cette aide
 help.cmd.version = Afficher la version
-help.cmd.providers = Lister les types de fournisseurs pris en charge
-help.cmd.config = Montrer l'origine d'un réglage : config explain <clé>
-help.options = Options
-help.opt.lang = Langue de l'interface : en, ru, fr
+help.chat_options = Options de chat
+help.opt.provider = Identifiant du fournisseur (voir : marelle providers)
+help.opt.model = Nom du modèle, ou fournisseur/modèle si aucun fournisseur n'est choisi
+help.opt.system = Prompt système
+help.opt.max_tokens = Limiter la longueur de la réponse, en jetons
+help.opt.temperature = Température d'échantillonnage
+help.opt.no_stream = Attendre la réponse entière au lieu de la recevoir au fil de l'eau
+help.opt.show_reasoning = Afficher le raisonnement du modèle sur stderr, s'il en envoie
+help.opt.show_usage = Afficher le nombre de jetons sur stderr
+help.options = Options générales
+help.opt.lang = Langue de l'interface : en, ru, fr, uk
+help.examples = Exemples
+help.example.ask = Poser une seule question
+help.example.pipe = Envoyer la sortie d'une commande avec une question (« - » désigne stdin)
+help.example.repl = Lancer une session interactive
+help.env = Tout réglage peut aussi venir de l'environnement : MARELLE_CHAT__MODEL=zai/MODEL définit chat.model.
+help.exit_codes = Codes de sortie : 0 succès, 1 erreur du fournisseur ou du réseau, 2 erreur d'usage ou de configuration.
+
+# --- ligne de commande ---
 error.unknown_command = Commande inconnue
 error.unknown_lang = Langue inconnue
 error.missing_key = Clé de réglage manquante. Utilisation : marelle config explain <clé>
+error.unknown_option = Option inconnue : {name}
+error.needs_value = L'option {name} attend une valeur.
+
+# --- réglages ---
 config.not_set = non défini
 config.effective = valeur effective
 config.history = historique (de la priorité la plus basse à la plus haute)
+config.show.empty = Aucun réglage ne correspond.
+
+# --- chat ---
+chat.no_provider = Aucun fournisseur choisi. Utilisez --provider <id>, écrivez --model <fournisseur>/<modèle>, ou définissez chat.provider.
+chat.no_model = Aucun modèle choisi. Utilisez --model <nom>, ou définissez chat.model.
+chat.empty_prompt = Rien à envoyer : la demande est vide.
+chat.empty_answer = (Le modèle a envoyé une réponse vide.)
+chat.cut.length = (La réponse a été coupée par la limite de longueur. Relevez-la avec --max-tokens.)
+chat.cut.filter = (Le filtre de contenu du fournisseur a arrêté la réponse.)
+chat.cut.tools = (Le modèle a demandé d'utiliser un outil, ce que Marelle ne sait pas encore faire.)
+chat.usage = jetons : {parts}
+chat.usage.in = {n} en entrée
+chat.usage.out = {n} en sortie
+chat.usage.cached = {n} en cache
+chat.usage.reasoning = {n} de raisonnement
+
+# --- session interactive ---
+repl.banner = {provider} / {model} - /help liste les commandes, /exit quitte
+repl.help = Commandes : /help  /clear  /model [nom]  /system [texte|off]  /exit
+repl.cleared = Conversation effacée.
+repl.model = Modèle : {model}
+repl.model_set = Modèle changé pour {model}.
+repl.system = Prompt système : {text}
+repl.system_none = Aucun prompt système.
+repl.system_set = Prompt système défini.
+repl.system_cleared = Prompt système retiré.
+repl.unknown = Commande {name} inconnue. Tapez /help.
+
+# --- le tableau des fournisseurs ---
+providers.col.name = Fournisseur
+providers.col.protocol = Protocole
+providers.col.address = Adresse
+providers.col.key = Clé d'API
+providers.key.set = définie
+providers.key.not_set = non définie
+providers.key.found = trouvé
+providers.key.missing = introuvable
+providers.key.none = aucune clé requise
+providers.file = fichier {path}
+providers.broken = inutilisable : {reason}
+providers.hint = L'utiliser avec : marelle chat --provider <nom> --model <modèle>
+
+# --- ce qu'un réglage peut contenir ---
+expected.bool = true ou false
+expected.whole_number = un nombre entier
+expected.positive_whole_number = un nombre entier supérieur à zéro
+expected.number = un nombre
+expected.env_name = le nom d'une variable d'environnement
+expected.url = une URL http ou https
+expected.proxy = system, none, ou l'URL d'un proxy http ou https
+expected.json_object = un objet JSON
+expected.one_of = l'une des valeurs : {values}
+
+# --- échecs ---
+fail.setting = Réglage {key} : il faut {expected}.
+fail.missing_setting = Le réglage {key} est obligatoire.
+fail.secret_in_settings = Le réglage {key} ne doit pas contenir de secret. Mettez la clé dans une variable d'environnement ou un fichier, et nommez-le avec api_key_env ou api_key_file.
+fail.unknown_provider = Fournisseur « {name} » inconnu. Fournisseurs connus : {known}.
+fail.no_api_key = Pas de clé d'API : la variable d'environnement {env} est absente ou vide.
+fail.api_key_file = Impossible de lire le fichier de clé d'API {path} : {reason}
+fail.invalid_api_key = La clé d'API contient des caractères qui ne peuvent pas figurer dans un en-tête HTTP.
+fail.insecure = Je refuse d'envoyer une clé d'API en http simple vers {host}. Utilisez https, ou définissez network.allow_insecure_http=true.
+fail.unsupported = Pas encore pris en charge : {detail}
+fail.ca_bundle = Aucun certificat utilisable dans {source}.
+fail.ca_bundle_file = Impossible de lire le lot de certificats {path} : {reason}
+fail.http = Le fournisseur a répondu HTTP {status} : {message}
+fail.hint.auth = Vérifiez la clé d'API et le compte auquel elle appartient.
+fail.hint.not_found = Vérifiez le nom du modèle et l'adresse du fournisseur.
+fail.hint.rate = La limite de débit ou le quota est atteint. Patientez un peu, ou vérifiez votre offre.
+fail.hint.server = Le fournisseur rencontre des difficultés. Réessayez plus tard.
+fail.api = Le fournisseur signale une erreur : {message}
+fail.transport = Impossible de joindre le fournisseur : {detail}
+fail.timeout = Le fournisseur n'a pas répondu à temps. La limite est network.idle_timeout_secs.
+fail.protocol = La réponse du fournisseur n'a pas été comprise : {detail}
+fail.input = Impossible de lire la demande : {reason}

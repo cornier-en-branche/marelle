@@ -4,3 +4,6 @@
 !.env.example
 *.swp
 .DS_Store
+*.key
+*.pem
+!crates/**/*.pem

@@ -1,0 +1,97 @@
+name: Release
+
+# Pushing a tag such as v0.1.0-alpha.1 builds the Android binaries for Termux
+# and publishes them as a GitHub release. Running the workflow by hand builds
+# the same archives as workflow artifacts, without publishing anything.
+on:
+  push:
+    tags: ["v*"]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+env:
+  CARGO_TERM_COLOR: always
+
+# Third-party actions are pinned to a commit. The comment names the release.
+jobs:
+  build:
+    name: Build ${{ matrix.target }}
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        target: [aarch64-linux-android, armv7-linux-androideabi]
+    steps:
+      - uses: actions/checkout@9f698171ed81b15d1823a05fc7211befd50c8ae0 # v6.0.3
+
+      - name: Name the build and check the tag
+        id: name
+        run: |
+          version="$(cargo metadata --no-deps --format-version 1 | python3 -c 'import json, sys; print(next(p["version"] for p in json.load(sys.stdin)["packages"] if p["name"] == "marelle-cli"))')"
+          if [ "$GITHUB_REF_TYPE" = tag ] && [ "$GITHUB_REF_NAME" != "v$version" ]; then
+            echo "::error::the tag $GITHUB_REF_NAME does not match the crate version $version"
+            exit 1
+          fi
+          echo "name=marelle-v${version}-${{ matrix.target }}" >> "$GITHUB_OUTPUT"
+
+      - name: Add the Rust target
+        run: rustup target add ${{ matrix.target }}
+
+      - name: Set up the NDK toolchain
+        run: scripts/ci/android-env.sh ${{ matrix.target }}
+
+      - name: Build
+        run: cargo build --release --locked -p marelle-cli --target ${{ matrix.target }}
+
+      - name: Package
+        env:
+          NAME: ${{ steps.name.outputs.name }}
+          TARGET: ${{ matrix.target }}
+        run: |
+          mkdir -p "dist/$NAME"
+          cp "target/$TARGET/release/marelle" LICENSE NOTICE README.md docs/TERMUX.md docs/TERMUX.ru.md "dist/$NAME/"
+          python3 scripts/third-party-licenses.py --target "$TARGET" > "dist/$NAME/THIRD-PARTY-LICENSES.txt"
+          tar -C dist -czf "dist/$NAME.tar.gz" "$NAME"
+          (cd dist && sha256sum "$NAME.tar.gz" > "$NAME.tar.gz.sha256")
+          rm -r "dist/$NAME"
+          ls -l dist
+
+      - uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6.0.0
+        with:
+          name: ${{ steps.name.outputs.name }}
+          path: dist/*
+          if-no-files-found: error
+
+  publish:
+    name: Publish the release
+    needs: build
+    if: github.ref_type == 'tag'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@9f698171ed81b15d1823a05fc7211befd50c8ae0 # v6.0.3
+
+      - uses: actions/download-artifact@018cc2cf5baa6db3ef3c5f8a56943fffe632ef53 # v6.0.0
+        with:
+          path: dist
+          merge-multiple: true
+
+      - name: Create the release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ github.ref_name }}
+        run: |
+          cd dist
+          cat ./*.sha256 > SHA256SUMS
+          sha256sum -c SHA256SUMS
+          flags=()
+          case "$TAG" in *-*) flags+=(--prerelease) ;; esac
+          gh release create "$TAG" "${flags[@]}" \
+            --repo "$GITHUB_REPOSITORY" \
+            --verify-tag \
+            --title "Marelle ${TAG#v}" \
+            --notes-file ../.github/release-notes.md \
+            ./marelle-*.tar.gz SHA256SUMS

@@ -13,12 +13,30 @@ Hermes Agent
   Copyright (c) 2025 Nous Research
   MIT License
 
-Marelle is designed with Hermes Agent as a reference. At the time of writing,
-no Hermes source code is included in this repository.
+OpenCode
+  https://github.com/sst/opencode
+  Copyright (c) 2025 opencode
+  MIT License
 
-If code from Hermes Agent or any other project is added, record it in this
-file with its copyright line and license, and keep the original license text
-alongside the code. For MIT-licensed code, the full MIT license text must
-travel with copies of the code. Only add code under licenses that are
-compatible with AGPL-3.0-only, such as MIT, BSD, Apache-2.0 and AGPL-3.0
-itself.
+Marelle is designed with Hermes Agent and OpenCode as references. The look of
+its interactive terminal interface follows the look of the Hermes Agent CLI
+(banner, status line, framed answers); the art, the colours and the code are
+Marelle's own. At the time of writing, no source code from either project is
+included in this repository.
+
+If code from Hermes Agent, OpenCode or any other project is added, record it
+in this file with its copyright line and license, and keep the original
+license text alongside the code. For MIT-licensed code, the full MIT license
+text must travel with copies of the code. Only add code under licenses that
+are compatible with AGPL-3.0-only, such as MIT, BSD, Apache-2.0 and
+AGPL-3.0 itself.
+
+
+Rust crates
+===========
+
+Marelle is built from open-source Rust crates, all under permissive licenses
+(MIT, Apache-2.0, ISC, BSD-3-Clause, Unicode-3.0, Unlicense and
+CDLA-Permissive-2.0). Their names, versions and license texts are listed in
+THIRD-PARTY-LICENSES.txt, which is included in every release archive. To
+regenerate it, run scripts/third-party-licenses.py.

@@ -6,170 +6,163 @@
 //! [`run`] takes its inputs and outputs as parameters instead of touching the
 //! process directly, which keeps it deterministic and easy to test.
 
-use std::io::{self, Write};
+mod args;
+mod chat;
+mod inspect;
+mod messages;
+mod settings;
 
-use marelle_config::{Config, Layer};
-use marelle_i18n::{Locale, tr};
-use marelle_providers::ProviderKind;
+use std::io::{self, BufRead, Write};
+
+use marelle_i18n::{Locale, tr, tr_with};
+
+use crate::args::{ArgError, Command};
+use crate::messages::USAGE_ERROR;
 
 /// The version of the `marelle` command.
 pub const VERSION: &str = env!("CARGO_PKG_VERSION");
 
-const ENV_PREFIX: &str = "MARELLE_";
 const OK: u8 = 0;
-const USAGE_ERROR: u8 = 2;
 
-/// Words in a setting's name that mark its value as secret.
-const SECRET_HINTS: [&str; 4] = ["key", "token", "secret", "password"];
-
-struct Invocation {
-    lang: Option<String>,
-    words: Vec<String>,
-}
-
-fn split_args(args: &[String]) -> Invocation {
-    let mut lang = None;
-    let mut words = Vec::new();
-    let mut iter = args.iter();
-    while let Some(arg) = iter.next() {
-        if arg == "--lang" {
-            lang = Some(iter.next().cloned().unwrap_or_default());
-        } else if let Some(code) = arg.strip_prefix("--lang=") {
-            lang = Some(code.to_owned());
-        } else {
-            words.push(arg.clone());
-        }
-    }
-    Invocation { lang, words }
+/// The streams of a run, and what they are connected to.
+pub struct Io<'a> {
+    /// Where a prompt is read from.
+    pub input: &'a mut dyn BufRead,
+    /// Where answers go. Nothing else is written here.
+    pub out: &'a mut dyn Write,
+    /// Where prompts, notes, reasoning and errors go.
+    pub err: &'a mut dyn Write,
+    /// Whether `input` is a person at a terminal. Without a prompt on the
+    /// command line, that starts a session; a pipe is read as the prompt.
+    pub interactive: bool,
+    /// Whether `err` understands colour.
+    pub color: bool,
 }
 
 /// Runs the command line and returns the process exit code.
 ///
 /// `env_vars` is a snapshot of the process environment.
-pub fn run(
-    args: &[String],
-    env_vars: &[(String, String)],
-    out: &mut dyn Write,
-    err: &mut dyn Write,
-) -> io::Result<u8> {
-    let invocation = split_args(args);
-    let lookup = |name: &str| {
-        env_vars
-            .iter()
-            .find(|(key, _)| key == name)
-            .map(|(_, value)| value.clone())
-    };
+pub fn run(args: &[String], env_vars: &[(String, String)], io: &mut Io<'_>) -> io::Result<u8> {
+    let global = args::split_global(args);
+    let lookup = |name: &str| settings::env_lookup(env_vars, name);
 
-    let locale = match &invocation.lang {
+    let locale = match &global.lang {
         Some(code) => match Locale::parse(code) {
             Some(locale) => locale,
             None => {
                 let message = tr(Locale::from_env(lookup), "error.unknown_lang");
-                writeln!(err, "{message}: '{code}'")?;
+                writeln!(io.err, "{message}: '{code}'")?;
                 return Ok(USAGE_ERROR);
             }
         },
         None => Locale::from_env(lookup),
     };
 
-    let words: Vec<&str> = invocation.words.iter().map(String::as_str).collect();
-    match words.as_slice() {
-        [] | ["help" | "--help" | "-h"] => help(locale, out),
-        ["version" | "--version" | "-V"] => {
-            writeln!(out, "marelle {VERSION}")?;
+    let command = match args::parse(&global.words) {
+        Ok(command) => command,
+        Err(error) => {
+            let (key, name) = match &error {
+                ArgError::UnknownOption(name) => ("error.unknown_option", name),
+                ArgError::NeedsValue(name) => ("error.needs_value", name),
+            };
+            writeln!(
+                io.err,
+                "marelle: {}",
+                tr_with(locale, key, &[("name", name)])
+            )?;
+            return Ok(USAGE_ERROR);
+        }
+    };
+
+    match command {
+        Command::Help => help(locale, io.out),
+        Command::Version => {
+            writeln!(io.out, "marelle {VERSION}")?;
             Ok(OK)
         }
-        ["providers"] => {
-            for kind in ProviderKind::ALL {
-                writeln!(out, "{}", kind.id())?;
-            }
-            Ok(OK)
-        }
-        ["config", "explain"] => {
-            writeln!(err, "{}", tr(locale, "error.missing_key"))?;
-            Ok(USAGE_ERROR)
-        }
-        ["config", "explain", key] => explain(locale, key, env_vars, out),
-        [other, ..] => {
-            writeln!(err, "{}: {other}", tr(locale, "error.unknown_command"))?;
+        Command::Providers => inspect::providers(locale, env_vars, io),
+        Command::ConfigShow { prefix } => inspect::show(locale, prefix.as_deref(), env_vars, io),
+        Command::ConfigExplain { key } => inspect::explain(locale, key.as_deref(), env_vars, io),
+        Command::Chat(chat_args) if chat_args.help => help(locale, io.out),
+        Command::Chat(chat_args) => chat::run(chat_args, locale, env_vars, io),
+        Command::Unknown(name) => {
+            writeln!(io.err, "{}: {name}", tr(locale, "error.unknown_command"))?;
             Ok(USAGE_ERROR)
         }
     }
 }
 
 fn help(locale: Locale, out: &mut dyn Write) -> io::Result<u8> {
-    writeln!(out, "Marelle {VERSION} - {}", tr(locale, "app.tagline"))?;
+    let say = |key: &str| tr(locale, key);
+
+    writeln!(out, "Marelle {VERSION} - {}", say("app.tagline"))?;
     writeln!(out)?;
-    writeln!(out, "{}:", tr(locale, "help.usage"))?;
-    writeln!(out, "  {}", tr(locale, "help.usage.line"))?;
+    writeln!(out, "{}:", say("help.usage"))?;
+    writeln!(out, "  {}", say("help.usage.line"))?;
+
     writeln!(out)?;
-    writeln!(out, "{}:", tr(locale, "help.commands"))?;
+    writeln!(out, "{}:", say("help.commands"))?;
     let commands = [
-        ("help", "help.cmd.help"),
-        ("version", "help.cmd.version"),
+        ("chat", "help.cmd.chat"),
         ("providers", "help.cmd.providers"),
         ("config", "help.cmd.config"),
+        ("help", "help.cmd.help"),
+        ("version", "help.cmd.version"),
     ];
     for (name, key) in commands {
-        writeln!(out, "  {name:<10} {}", tr(locale, key))?;
+        writeln!(out, "  {name:<10} {}", say(key))?;
     }
+
     writeln!(out)?;
-    writeln!(out, "{}:", tr(locale, "help.options"))?;
-    writeln!(out, "  --lang     {}", tr(locale, "help.opt.lang"))?;
-    Ok(OK)
-}
-
-/// Built-in defaults. These keys are placeholders for settings that later
-/// milestones will start to use.
-fn defaults() -> Config {
-    let mut config = Config::new();
-    config.set(Layer::Default, "agent.max_turns", "20");
-    config.set(Layer::Default, "permissions.shell", "ask");
-    config
-}
-
-fn is_secret(key: &str) -> bool {
-    let key = key.to_ascii_lowercase();
-    SECRET_HINTS.iter().any(|hint| key.contains(hint))
-}
-
-fn display_value<'a>(key: &str, value: &'a str) -> &'a str {
-    if is_secret(key) { "***" } else { value }
-}
-
-fn explain(
-    locale: Locale,
-    key: &str,
-    env_vars: &[(String, String)],
-    out: &mut dyn Write,
-) -> io::Result<u8> {
-    let mut config = defaults();
-    config.load_env(
-        ENV_PREFIX,
-        env_vars
-            .iter()
-            .map(|(name, value)| (name.as_str(), value.as_str())),
-    );
-
-    writeln!(out, "{key}")?;
-    match config.get(key) {
-        None => writeln!(out, "  {}", tr(locale, "config.not_set"))?,
-        Some(value) => {
-            let value = display_value(key, value);
-            writeln!(out, "  {}: {value}", tr(locale, "config.effective"))?;
-            writeln!(out, "  {}:", tr(locale, "config.history"))?;
-            for origin in config.explain(key) {
-                let value = display_value(key, &origin.value);
-                writeln!(out, "    {}: {value}", origin.layer)?;
-            }
-        }
+    writeln!(out, "{}:", say("help.chat_options"))?;
+    let options = [
+        ("-p, --provider <id>", "help.opt.provider"),
+        ("-m, --model <name>", "help.opt.model"),
+        ("    --system <text>", "help.opt.system"),
+        ("    --max-tokens <n>", "help.opt.max_tokens"),
+        ("    --temperature <x>", "help.opt.temperature"),
+        ("    --no-stream", "help.opt.no_stream"),
+        ("    --show-reasoning", "help.opt.show_reasoning"),
+        ("    --show-usage", "help.opt.show_usage"),
+    ];
+    for (flag, key) in options {
+        writeln!(out, "  {flag:<22} {}", say(key))?;
     }
+
+    writeln!(out)?;
+    writeln!(out, "{}:", say("help.options"))?;
+    writeln!(
+        out,
+        "  {:<22} {}",
+        "    --lang <code>",
+        say("help.opt.lang")
+    )?;
+
+    writeln!(out)?;
+    writeln!(out, "{}:", say("help.examples"))?;
+    writeln!(out, "  # {}", say("help.example.ask"))?;
+    writeln!(
+        out,
+        "  marelle chat -m zai/MODEL \"Explain lifetimes in two sentences\""
+    )?;
+    writeln!(out, "  # {}", say("help.example.pipe"))?;
+    writeln!(
+        out,
+        "  git diff | marelle chat -p anthropic -m MODEL \"Review this diff:\" -"
+    )?;
+    writeln!(out, "  # {}", say("help.example.repl"))?;
+    writeln!(out, "  marelle chat -m zai/MODEL")?;
+
+    writeln!(out)?;
+    writeln!(out, "{}", say("help.env"))?;
+    writeln!(out, "{}", say("help.exit_codes"))?;
     Ok(OK)
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::io::Cursor;
 
     fn run_cli(args: &[&str], env: &[(&str, &str)]) -> (u8, String, String) {
         let args: Vec<String> = args.iter().map(|arg| (*arg).to_owned()).collect();
@@ -178,7 +171,15 @@ mod tests {
             .map(|(name, value)| ((*name).to_owned(), (*value).to_owned()))
             .collect();
         let (mut out, mut err) = (Vec::new(), Vec::new());
-        let code = run(&args, &env, &mut out, &mut err).expect("writing to memory cannot fail");
+        let mut input = Cursor::new(Vec::new());
+        let mut io = Io {
+            input: &mut input,
+            out: &mut out,
+            err: &mut err,
+            interactive: false,
+            color: false,
+        };
+        let code = run(&args, &env, &mut io).expect("writing to memory cannot fail");
         (
             code,
             String::from_utf8(out).expect("output is UTF-8"),
@@ -198,12 +199,16 @@ mod tests {
         let (code, out, _) = run_cli(&[], &[]);
         assert_eq!(code, 0);
         assert!(out.contains("Usage:"));
+        assert!(out.contains("chat"));
+        assert!(out.contains("--max-tokens"));
     }
 
     #[test]
     fn help_follows_the_environment_language() {
         let (_, out, _) = run_cli(&["help"], &[("LANG", "ru_RU.UTF-8")]);
         assert!(out.contains("Использование:"));
+        let (_, out, _) = run_cli(&["help"], &[("MARELLE_LANG", "uk")]);
+        assert!(out.contains("Використання:"));
     }
 
     #[test]
@@ -213,6 +218,39 @@ mod tests {
 
         let (_, out, _) = run_cli(&["--lang=fr", "help"], &[("LANG", "ru_RU.UTF-8")]);
         assert!(out.contains("Utilisation:"));
+    }
+
+    #[test]
+    fn every_language_has_a_complete_help_page() {
+        for locale in Locale::ALL {
+            let (code, out, _) = run_cli(&["--lang", locale.code(), "help"], &[]);
+            assert_eq!(code, 0);
+            assert!(
+                !out.contains("help."),
+                "a missing translation shows its key ({locale:?})"
+            );
+            assert!(out.contains("--show-reasoning"));
+            assert!(out.contains("MARELLE_CHAT__MODEL"));
+        }
+    }
+
+    #[test]
+    fn help_descriptions_line_up_in_every_language() {
+        // An option row is two spaces, a 22-wide flag column, a space, then
+        // the description: so column 24 is blank and column 25 is not.
+        for locale in Locale::ALL {
+            let (_, out, _) = run_cli(&["--lang", locale.code(), "help"], &[]);
+            let rows: Vec<&str> = out
+                .lines()
+                .filter(|line| line.starts_with("  -") || line.starts_with("      --"))
+                .collect();
+            assert_eq!(rows.len(), 9, "{locale:?}: option rows in:\n{out}");
+            for row in rows {
+                let cells: Vec<char> = row.chars().collect();
+                assert_eq!(cells[24], ' ', "{locale:?}: {row}");
+                assert_ne!(cells[25], ' ', "{locale:?}: {row}");
+            }
+        }
     }
 
     #[test]
@@ -232,10 +270,77 @@ mod tests {
     }
 
     #[test]
-    fn providers_lists_every_kind() {
-        let (code, out, _) = run_cli(&["providers"], &[]);
+    fn option_mistakes_are_usage_errors() {
+        let (code, out, err) = run_cli(&["chat", "--wat"], &[]);
+        assert_eq!((code, out.as_str()), (2, ""));
+        assert!(err.contains("Unknown option: --wat"));
+
+        let (code, _, err) = run_cli(&["chat", "--model"], &[]);
+        assert_eq!(code, 2);
+        assert!(err.contains("The option --model needs a value."));
+    }
+
+    #[test]
+    fn chat_help_is_the_general_help() {
+        let (code, out, _) = run_cli(&["chat", "--help"], &[]);
         assert_eq!(code, 0);
-        assert_eq!(out, "openai-compatible\nanthropic\n");
+        assert!(out.contains("Chat options:"));
+    }
+
+    #[test]
+    fn providers_come_as_a_table_with_key_status() {
+        let (code, out, _) = run_cli(&["providers"], &[("ZAI_API_KEY", "set-in-the-test")]);
+        assert_eq!(code, 0);
+        let line = |name: &str| {
+            out.lines()
+                .find(|line| line.starts_with(name))
+                .unwrap_or_else(|| panic!("no row for {name} in:\n{out}"))
+        };
+        assert!(out.lines().next().unwrap().starts_with("Provider"));
+        assert!(line("zai ").contains("openai-compatible"));
+        assert!(line("zai ").contains("https://api.z.ai/api/paas/v4"));
+        assert!(line("zai ").contains("ZAI_API_KEY (set)"));
+        assert!(
+            !out.contains("set-in-the-test"),
+            "the key itself is never shown"
+        );
+        assert!(line("anthropic ").contains("ANTHROPIC_API_KEY (not set)"));
+        assert!(line("ollama ").contains("no key needed"));
+        assert!(out.contains("marelle chat --provider"));
+    }
+
+    #[test]
+    fn custom_providers_join_the_table_and_broken_ones_say_why() {
+        let (_, out, _) = run_cli(
+            &["providers"],
+            &[
+                (
+                    "MARELLE_PROVIDERS__WORK__BASE_URL",
+                    "https://u:p@gateway.example/v1",
+                ),
+                (
+                    "MARELLE_PROVIDERS__WORK__API_KEY_FILE",
+                    "/definitely/not/here",
+                ),
+                ("MARELLE_PROVIDERS__BROKEN__KIND", "openai"),
+            ],
+        );
+        let work = out
+            .lines()
+            .find(|line| line.starts_with("work"))
+            .expect("a row for work");
+        assert!(work.contains("https://***@gateway.example/v1"), "{work}");
+        assert!(!work.contains("u:p@"));
+        assert!(
+            work.contains("file /definitely/not/here (missing)"),
+            "{work}"
+        );
+        let broken = out
+            .lines()
+            .find(|line| line.starts_with("broken"))
+            .expect("a row for broken");
+        assert!(broken.contains("unusable"), "{broken}");
+        assert!(broken.contains("providers.broken.base_url"), "{broken}");
     }
 
     #[test]
@@ -274,5 +379,51 @@ mod tests {
         assert_eq!(code, 0);
         assert!(out.contains("***"));
         assert!(!out.contains("sk-do-not-print"));
+    }
+
+    #[test]
+    fn config_show_lists_settings_with_their_layer() {
+        let (code, out, _) = run_cli(
+            &["config", "show", "chat."],
+            &[
+                ("MARELLE_CHAT__MODEL", "glm"),
+                ("MARELLE_CHAT__SYSTEM", "Be brief."),
+            ],
+        );
+        assert_eq!(code, 0);
+        let lines: Vec<&str> = out.lines().collect();
+        assert!(lines.iter().all(|line| line.starts_with("chat.")), "{out}");
+        assert!(
+            lines
+                .iter()
+                .any(|l| l.contains("chat.model") && l.contains("= glm") && l.ends_with("[env]"))
+        );
+        assert!(lines.iter().any(|l| l.contains("chat.stream")
+            && l.contains("= true")
+            && l.ends_with("[default]")));
+        let sorted = {
+            let mut copy = lines.clone();
+            copy.sort_unstable();
+            copy
+        };
+        assert_eq!(lines, sorted, "keys come sorted");
+    }
+
+    #[test]
+    fn config_show_hides_secrets_and_shows_where_keys_live() {
+        let (_, out, _) = run_cli(
+            &["config", "show", "providers.zai."],
+            &[("MARELLE_PROVIDERS__ZAI__API_KEY_FILE", "~/.keys/zai")],
+        );
+        assert!(out.contains("providers.zai.api_key_env"));
+        assert!(out.contains("= ZAI_API_KEY"), "{out}");
+        assert!(out.contains("= ~/.keys/zai"), "{out}");
+    }
+
+    #[test]
+    fn config_show_with_no_match_says_so() {
+        let (code, out, _) = run_cli(&["config", "show", "zzz."], &[]);
+        assert_eq!(code, 0);
+        assert_eq!(out, "No settings match.\n");
     }
 }
