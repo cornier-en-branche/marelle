@@ -631,7 +631,21 @@ fn wrap(text: &str, width: usize) -> Vec<String> {
             count = 0;
             continue;
         }
-        current.push(character);
+        // Never let model output or configuration text inject terminal
+        // control sequences into the UI. Tabs are rendered as spaces.
+        if character == '\t' {
+            for _ in 0..4 {
+                current.push(' ');
+                count += 1;
+                if count >= width {
+                    lines.push(std::mem::take(&mut current));
+                    count = 0;
+                }
+            }
+            continue;
+        }
+        let safe = if character.is_control() { '�' } else { character };
+        current.push(safe);
         count += 1;
         if count >= width {
             lines.push(std::mem::take(&mut current));
@@ -645,7 +659,17 @@ fn wrap(text: &str, width: usize) -> Vec<String> {
 }
 
 fn fit(text: &str, width: usize) -> String {
-    let mut output: String = text.chars().take(width).collect();
+    let mut output: String = text
+        .chars()
+        .map(|character| {
+            if character.is_control() {
+                '�'
+            } else {
+                character
+            }
+        })
+        .take(width)
+        .collect();
     let count = output.chars().count();
     if count < width {
         output.push_str(&" ".repeat(width - count));
@@ -724,6 +748,14 @@ mod tests {
     fn fitting_never_exceeds_the_requested_character_width() {
         assert_eq!(fit("abcdef", 4), "abcd");
         assert_eq!(fit("xy", 4), "xy  ");
+    }
+
+    #[test]
+    fn terminal_control_sequences_are_never_emitted_from_content() {
+        let rendered = wrap("hello\u{1b}[2J\u{7}world", 80).join("");
+        assert!(!rendered.contains('\u{1b}'));
+        assert!(!rendered.contains('\u{7}'));
+        assert!(rendered.contains('�'));
     }
 
     fn editor() -> Tui {
