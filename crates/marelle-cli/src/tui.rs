@@ -278,12 +278,10 @@ impl Tui {
                     .saturating_sub(usize::from(height).saturating_sub(7).max(1));
             }
             KeyCode::Tab => self.complete_command(),
-            KeyCode::Esc => {
-                if !self.input.is_empty() {
-                    self.input.clear();
-                    self.cursor = 0;
-                    self.reset_history_navigation();
-                }
+            KeyCode::Esc if !self.input.is_empty() => {
+                self.input.clear();
+                self.cursor = 0;
+                self.reset_history_navigation();
             }
             _ => {}
         }
