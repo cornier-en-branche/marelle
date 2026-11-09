@@ -661,12 +661,12 @@ fn compare_turn(
                 conversation.provider_override.as_deref(),
                 &plan.chat,
             ) {
-                    Ok(target) => target,
-                    Err(failure) => {
-                        slots[index] = Some(Err(failure));
-                        continue;
-                    }
-                };
+                Ok(target) => target,
+                Err(failure) => {
+                    slots[index] = Some(Err(failure));
+                    continue;
+                }
+            };
             let system = conversation
                 .system
                 .resolve(Some(&target), plan.chat.system.as_deref());
@@ -1171,11 +1171,27 @@ fn repl_tui(
 fn command_palette_items() -> Vec<SelectorItem> {
     [
         ("model", "Choose model", "Switch the active model"),
-        ("provider", "Choose provider", "Switch the provider for bare model names"),
-        ("compare", "Compare models", "Set or inspect parallel model comparison"),
+        (
+            "provider",
+            "Choose provider",
+            "Switch the provider for bare model names",
+        ),
+        (
+            "compare",
+            "Compare models",
+            "Set or inspect parallel model comparison",
+        ),
         ("fallback", "Fallback chain", "Set or inspect fallback models"),
-        ("judge", "Judge model", "Choose a model to combine comparison results"),
-        ("system", "System prompt", "Set, inspect, or disable the system prompt"),
+        (
+            "judge",
+            "Judge model",
+            "Choose a model to combine comparison results",
+        ),
+        (
+            "system",
+            "System prompt",
+            "Set, inspect, or disable the system prompt",
+        ),
         ("clear", "Clear conversation", "Start with an empty transcript"),
         ("help", "Help", "Show available chat commands"),
         ("exit", "Exit", "Leave the interactive session"),
@@ -1191,10 +1207,11 @@ fn command_palette_items() -> Vec<SelectorItem> {
 
 fn model_selector_items(plan: &Plan, conversation: &Conversation) -> Vec<SelectorItem> {
     let mut items = Vec::new();
-    let current_provider = conversation
-        .provider_override
-        .as_deref()
-        .or_else(|| plan.primary.as_ref().map(|target| target.provider_name.as_str()));
+    let current_provider = conversation.provider_override.as_deref().or_else(|| {
+        plan.primary
+            .as_ref()
+            .map(|target| target.provider_name.as_str())
+    });
 
     for key in plan.config.keys() {
         let Some(alias_name) = key
@@ -1203,7 +1220,12 @@ fn model_selector_items(plan: &Plan, conversation: &Conversation) -> Vec<Selecto
         else {
             continue;
         };
-        let Some(model) = plan.config.get(key).map(str::trim).filter(|value| !value.is_empty()) else {
+        let Some(model) = plan
+            .config
+            .get(key)
+            .map(str::trim)
+            .filter(|value| !value.is_empty())
+        else {
             continue;
         };
         let provider_key = format!("models.{alias_name}.provider");
@@ -1221,16 +1243,16 @@ fn model_selector_items(plan: &Plan, conversation: &Conversation) -> Vec<Selecto
         });
     }
 
-    if !conversation.model.is_empty()
-        && !items.iter().any(|item| item.value == conversation.model)
-    {
+    if !conversation.model.is_empty() && !items.iter().any(|item| item.value == conversation.model) {
         items.insert(
             0,
             SelectorItem {
                 value: conversation.model.clone(),
                 label: format!("Current: {}", conversation.display_model(plan)),
-                detail: current_provider
-                    .map_or_else(|| "current model".to_owned(), |provider| provider.to_owned()),
+                detail: current_provider.map_or_else(
+                    || "current model".to_owned(),
+                    |provider| provider.to_owned(),
+                ),
             },
         );
     }
@@ -1238,10 +1260,11 @@ fn model_selector_items(plan: &Plan, conversation: &Conversation) -> Vec<Selecto
 }
 
 fn provider_selector_items(plan: &Plan, conversation: &Conversation) -> Vec<SelectorItem> {
-    let current = conversation
-        .provider_override
-        .as_deref()
-        .or_else(|| plan.primary.as_ref().map(|target| target.provider_name.as_str()));
+    let current = conversation.provider_override.as_deref().or_else(|| {
+        plan.primary
+            .as_ref()
+            .map(|target| target.provider_name.as_str())
+    });
 
     provider_names(&plan.config)
         .into_iter()
@@ -1278,8 +1301,7 @@ fn model_for_provider(
     }
     if let Some((provider, model)) = reference.split_once('/') {
         if !model.is_empty()
-            && current_provider
-                .is_some_and(|current| normalize_name(provider) == normalize_name(current))
+            && current_provider.is_some_and(|current| normalize_name(provider) == normalize_name(current))
         {
             return Ok(model.to_owned());
         }
@@ -1313,7 +1335,11 @@ fn repl_line(
     let provider_label = conversation
         .provider_override
         .clone()
-        .or_else(|| plan.primary.as_ref().map(|target| target.provider_name.clone()))
+        .or_else(|| {
+            plan.primary
+                .as_ref()
+                .map(|target| target.provider_name.clone())
+        })
         .unwrap_or_else(|| tr(locale, "ui.compare"));
     if plan.ui.banner {
         write!(
@@ -1446,7 +1472,11 @@ fn command(
             let current = conversation
                 .provider_override
                 .as_deref()
-                .or_else(|| plan.primary.as_ref().map(|target| target.provider_name.as_str()))
+                .or_else(|| {
+                    plan.primary
+                        .as_ref()
+                        .map(|target| target.provider_name.as_str())
+                })
                 .unwrap_or("not selected");
             writeln!(io.err, "Current provider: {current}")?;
         }
