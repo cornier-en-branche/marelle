@@ -661,7 +661,11 @@ fn wrap(text: &str, width: usize) -> Vec<String> {
             }
             continue;
         }
-        let safe = if character.is_control() { '�' } else { character };
+        let safe = if character.is_control() {
+            '�'
+        } else {
+            character
+        };
         current.push(safe);
         count += 1;
         if count >= width {
