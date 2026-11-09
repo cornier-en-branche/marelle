@@ -990,6 +990,7 @@ mod tests {
     #[test]
     fn command_hints_only_match_a_partial_slash_command() {
         assert_eq!(command_hint("/mod"), "/model");
+        assert_eq!(command_hint("/prov"), "/provider");
         assert_eq!(
             command_hint("/"),
             "/clear   /compare   /exit   /fallback   /help   /judge   /model   /quit   /system"
