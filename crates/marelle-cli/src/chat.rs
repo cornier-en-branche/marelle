@@ -344,16 +344,29 @@ struct Conversation {
     system: SystemChoice,
 }
 
-fn effective_provider_name(plan: &Plan, conversation: &Conversation) -> Option<String> {
-    if let Ok(Some(alias)) = alias(&plan.config, &conversation.model) {
+fn effective_provider_name_for(
+    config: &Config,
+    model: &str,
+    provider_override: Option<&str>,
+    default_provider: Option<&str>,
+) -> Option<String> {
+    if let Ok(Some(alias)) = alias(config, model) {
         if let Some(provider) = alias.provider {
             return Some(provider);
         }
     }
-    conversation
-        .provider_override
-        .clone()
-        .or_else(|| plan.primary.as_ref().map(|target| target.provider_name.clone()))
+    provider_override
+        .or(default_provider)
+        .map(str::to_owned)
+}
+
+fn effective_provider_name(plan: &Plan, conversation: &Conversation) -> Option<String> {
+    effective_provider_name_for(
+        &plan.config,
+        &conversation.model,
+        conversation.provider_override.as_deref(),
+        plan.primary.as_ref().map(|target| target.provider_name.as_str()),
+    )
 }
 
 impl Conversation {
@@ -1588,11 +1601,7 @@ fn command(
         writeln!(io.err, "{}", tr_with(locale, key, args))
     };
     let lookup = |name: &str| env_lookup(env_vars, name);
-    let provider_hint = conversation.provider_override.clone().or_else(|| {
-        plan.primary
-            .as_ref()
-            .map(|target| target.provider_name.clone())
-    });
+    let provider_hint = effective_provider_name(plan, conversation);
     match name {
         "exit" | "quit" | "q" => return Ok(Flow::Exit),
         "help" | "?" => say(io, "repl.help", &[])?,
@@ -1829,6 +1838,28 @@ mod tests {
         assert_eq!(slash_command("/"), Some(("", "")));
         assert_eq!(slash_command("/etc/hosts what is this?"), None);
         assert_eq!(slash_command("hello /exit"), None);
+    }
+
+    #[test]
+    fn alias_provider_takes_precedence_when_reporting_active_provider() {
+        use marelle_config::Layer;
+
+        let mut config = Config::new();
+        config.set(Layer::Default, "models.remote.model", "claude-sonnet");
+        config.set(Layer::Default, "models.remote.provider", "anthropic");
+
+        assert_eq!(
+            effective_provider_name_for(&config, "remote", Some("openai"), Some("zai")),
+            Some("anthropic".to_owned())
+        );
+        assert_eq!(
+            effective_provider_name_for(&config, "bare-model", Some("openai"), Some("zai")),
+            Some("openai".to_owned())
+        );
+        assert_eq!(
+            effective_provider_name_for(&config, "bare-model", None, Some("zai")),
+            Some("zai".to_owned())
+        );
     }
 
     #[test]
