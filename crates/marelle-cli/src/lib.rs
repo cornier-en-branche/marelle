@@ -143,6 +143,8 @@ fn help(locale: Locale, out: &mut dyn Write) -> io::Result<u8> {
     let options = [
         ("-p, --provider <id>", "help.opt.provider"),
         ("-m, --model <name>", "help.opt.model"),
+        ("-q, --query <text>", "help.opt.query"),
+        ("-c, --continue", "help.opt.continue"),
         ("    --system <text>", "help.opt.system"),
         ("    --max-tokens <n>", "help.opt.max_tokens"),
         ("    --temperature <x>", "help.opt.temperature"),
@@ -176,7 +178,8 @@ fn help(locale: Locale, out: &mut dyn Write) -> io::Result<u8> {
         "  git diff | marelle chat -p anthropic -m MODEL \"Review this diff:\" -"
     )?;
     writeln!(out, "  # {}", say("help.example.repl"))?;
-    writeln!(out, "  marelle chat -m zai/MODEL")?;
+    writeln!(out, "  marelle --tui")?;
+    writeln!(out, "  marelle --continue")?;
 
     writeln!(out)?;
     writeln!(out, "{}", say("help.env"))?;
