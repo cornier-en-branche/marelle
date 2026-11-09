@@ -1221,6 +1221,7 @@ fn repl_tui(
                     } else if name == "session" {
                         tui.load_history(conversation.session.messages())?;
                     }
+                    tui.set_session(conversation.session_name.clone())?;
                     let (provider, model) = tui_model_labels(plan, &conversation, locale);
                     tui.set_model(provider, model)?;
                     tui.push_notice(String::from_utf8_lossy(&status_output).trim().to_owned())?;
@@ -1897,7 +1898,7 @@ mod tests {
         assert_eq!(conversation.session.messages()[0].content, "first conversation");
         assert_eq!(conversation.model, "quick");
         assert_eq!(conversation.provider_override.as_deref(), Some("zai"));
-        assert_eq!(conversation.fallback, ["openai/fallback"]);
+        assert_eq!(conversation.fallback, vec!["openai/fallback".to_owned()]);
 
         assert!(conversation.switch_session("Chat 2"));
         assert_eq!(conversation.session.messages()[0].content, "second conversation");
