@@ -9,7 +9,7 @@ Bring your own API keys: Z.ai (Zhipu GLM), Anthropic, OpenAI, OpenRouter, a loca
 
 English | [Русский](README.ru.md)
 
-> **Pre-alpha, version 0.1.0-alpha.1.** Chat works: streaming answers, pipes and an interactive session. The agent loop with tools is not there yet, and settings will still change. What comes next is under [Roadmap](#roadmap).
+> **Pre-alpha, version 0.1.0-alpha.1.** Native TUI, multi-provider chat, a permission-aware agent loop, local tools and resumable local sessions are implemented. APIs and settings may still change. This is a prototype, not feature parity with OpenCode or Hermes.
 
 *Marelle* is French for hopscotch. Each square is a step.
 
@@ -35,18 +35,51 @@ mkdir -p ~/.config/marelle
 export MARELLE_PROVIDERS__ZAI__API_KEY_FILE=~/.config/marelle/zai.key
 
 marelle providers                                    # what exists, and whether the key was found
+marelle config set chat.provider zai
+marelle config set chat.model glm-5.2
+marelle                                                # open the interactive terminal UI
 marelle chat -m zai/MODEL "Explain hopscotch in one sentence"
 ```
 
 Replace `MODEL` with a model name from your provider's list. Other ways to use it:
 
 ```sh
-marelle chat -m zai/MODEL                            # interactive TUI: /help, /model, /provider, /session, Ctrl+P
+marelle                                                # interactive TUI (when chat.model is configured)
+marelle --tui                                           # explicit TUI launch
+marelle --continue                                      # resume the most recent saved conversation
+marelle chat -q "Explain this repository"               # one prompt, then exit
+marelle chat -m zai/MODEL                               # interactive TUI with a one-time model override
 git diff | marelle chat -m zai/MODEL "Review this:" -   # "-" stands for what was piped in
-marelle chat -p anthropic -m MODEL --show-usage --show-reasoning "Why is the sky blue?"
+marelle chat -p anthropic -m MODEL --show-usage "Why is the sky blue?"
 ```
 
 The answer goes to stdout. Reasoning, token counts, notes and errors go to stderr, so `marelle chat ... > answer.txt` saves only the answer.
+
+## Agent tools
+
+Marelle sends structured tool definitions through OpenAI-compatible and Anthropic APIs. The built-in tool set is:
+
+| Tool | Purpose |
+| --- | --- |
+| `terminal` | Run a shell command from the launch directory |
+| `read_file`, `write_file`, `edit_file` | Read and modify UTF-8 text files |
+| `list_directory`, `search_text` | Inspect and search project files |
+| `fetch_url` | Fetch a public HTTP(S) page as text (requires `curl`) |
+| `list_skills`, `load_skill` | Discover and load local `SKILL.md` instructions |
+
+Use `/tools` to inspect the tool list and `/skills` to list available skills. Project guidance is loaded from `AGENTS.md`, `CLAUDE.md`, `SOUL.md`, `.cursorrules` and selected `.marelle/` files when they are inside allowed paths.
+
+File tools are confined to `permissions.allowed_paths` (default: the current project directory) and respect `permissions.denied_paths`. Reading is allowed by default; file changes, shell commands and network fetches ask before running. The shell permission applies to host commands and is not a filesystem sandbox: keep it at `ask` unless you deliberately trust the model with command execution.
+
+The agent stops after `agent.max_turns` tool round-trips. Tool responses are treated as untrusted content. Requests use complete model responses so tool arguments are not assembled from incomplete stream fragments.
+
+## Sessions
+
+Conversations are saved locally by default, including tool-call history and model/session settings. On Unix the session directory is mode `0700` and the JSON file is mode `0600`. The file is stored at `$XDG_STATE_HOME/marelle/sessions.json`, or `~/.local/state/marelle/sessions.json` when `XDG_STATE_HOME` is unset. API keys are never written to this file. Disable persistence with:
+
+```sh
+marelle config set agent.persist_sessions false
+```
 
 Exit codes: `0` success, `1` provider or network error, `2` usage or configuration error.
 
@@ -91,6 +124,14 @@ Settings come in layers: built-in defaults, then environment variables, then fla
 | `chat.max_tokens`, `chat.temperature` | none | Left to the provider when unset |
 | `chat.stream` | `true` | Print the answer as it arrives |
 | `chat.show_reasoning`, `chat.show_usage` | `false` | Reasoning and token counts on stderr |
+| `agent.max_turns` | `20` | Maximum tool round-trips per user request |
+| `agent.persist_sessions` | `true` | Save local conversations between runs |
+| `permissions.shell` | `ask` | Shell command execution: `allow`, `ask`, `deny` |
+| `permissions.files_read` | `allow` | File reads: `allow`, `ask`, `deny` |
+| `permissions.files_write` | `ask` | File changes: `allow`, `ask`, `deny` |
+| `permissions.network` | `ask` | URL fetching: `allow`, `ask`, `deny` |
+| `permissions.allowed_paths` | `["."]` | Allowed roots for file tools |
+| `permissions.denied_paths` | none | Explicitly blocked file paths |
 | `network.connect_timeout_secs` | `15` | Time allowed to connect |
 | `network.idle_timeout_secs` | `300` | Silence allowed while waiting for data |
 | `network.proxy` | `system` | `system`, `none`, or a proxy URL |
@@ -115,10 +156,10 @@ The interface speaks English, Russian, French and Ukrainian. Choose with `--lang
 1. **Talk.** Streaming chat with OpenAI-compatible and Anthropic providers. *Done.*
 2. **Settings and look.** TOML setting files, global and per project, with `config set`, `get` and `unset` and a description for every key. A themed interface in the spirit of [Hermes Agent](https://github.com/NousResearch/hermes-agent): banner, information panel, framed answers, spinner, in wisteria purple by default with any colour settable as HEX. *Done.*
 3. **Many models.** Model aliases, asking several models at once and comparing the answers, fallback chains, and a judge model that merges them. *Done.*
-4. **Act.** A tool loop, built-in tools and a permission policy: allow, ask or deny.
-5. **Remember.** In-memory named conversations are available in the interactive TUI. Persistent session storage and memory are still ahead.
-6. **Extend.** MCP, plugins and skills.
-7. **Reach.** Gateways and scheduled tasks.
+4. **Act.** Structured tool calling for OpenAI-compatible and Anthropic providers, local file/search/terminal tools, URL fetching, local skills and allow/ask/deny permissions. *Prototype implemented.*
+5. **Remember.** Named conversations persist locally between runs. Long-term semantic memory is still ahead.
+6. **Extend.** MCP servers, external plugins, subagents and richer skills support.
+7. **Reach.** Browser automation, messaging gateways and scheduled tasks.
 
 The reasoning behind the design is in [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md).
 
