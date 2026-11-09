@@ -1084,8 +1084,8 @@ fn repl_tui(
                     }
                     let (provider, model) = tui_model_labels(plan, &conversation, locale);
                     tui.set_model(provider, model)?;
-                    let status = status_line(&status_output);
-                    tui.set_status(if status.is_empty() { "Ready".to_owned() } else { status })?;
+                    tui.push_notice(String::from_utf8_lossy(&status_output).trim().to_owned())?;
+                    tui.set_status("Ready")?;
 
                     if let Flow::Exit = flow {
                         return Ok(OK);
@@ -1118,17 +1118,12 @@ fn repl_tui(
                     )?
                 };
                 tui.finish_answer()?;
-                let status = status_line(&status_output);
-                let status = if status.is_empty() {
-                    if result == OK {
-                        "Ready".to_owned()
-                    } else {
-                        format!("Request finished with code {result}")
-                    }
+                tui.push_notice(String::from_utf8_lossy(&status_output).trim().to_owned())?;
+                tui.set_status(if result == OK {
+                    "Ready"
                 } else {
-                    status
-                };
-                tui.set_status(status)?;
+                    "Request finished with an error"
+                })?;
 
                 let (provider, model) = tui_model_labels(plan, &conversation, locale);
                 tui.set_model(provider, model)?;
@@ -1151,13 +1146,6 @@ fn tui_model_labels(
         tr(locale, "ui.compare")
     };
     (provider, conversation.display_model(plan))
-}
-
-fn status_line(bytes: &[u8]) -> String {
-    String::from_utf8_lossy(bytes)
-        .split_whitespace()
-        .collect::<Vec<_>>()
-        .join(" ")
 }
 
 fn repl_line(
