@@ -344,10 +344,6 @@ impl Tui {
         self.render()
     }
 
-    pub(crate) fn answer_writer(&mut self) -> AnswerWriter<'_> {
-        AnswerWriter { tui: self }
-    }
-
     fn push_message(&mut self, kind: MessageKind, text: String) {
         self.messages.push(UiMessage { kind, text });
         if self.messages.len() > MAX_MESSAGES {
@@ -794,22 +790,6 @@ impl Drop for Tui {
             LeaveAlternateScreen
         );
         let _ = terminal::disable_raw_mode();
-    }
-}
-
-/// A writer that routes streamed assistant text into the transcript.
-pub(crate) struct AnswerWriter<'a> {
-    tui: &'a mut Tui,
-}
-
-impl Write for AnswerWriter<'_> {
-    fn write(&mut self, bytes: &[u8]) -> io::Result<usize> {
-        self.tui.append_answer(bytes)?;
-        Ok(bytes.len())
-    }
-
-    fn flush(&mut self) -> io::Result<()> {
-        self.tui.render()
     }
 }
 
