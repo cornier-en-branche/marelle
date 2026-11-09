@@ -64,6 +64,7 @@ fn request(stream: bool) -> ChatRequest {
         max_tokens: Some(64),
         temperature: None,
         stream,
+        tools: Vec::new(),
     }
 }
 
