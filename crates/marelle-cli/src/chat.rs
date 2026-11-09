@@ -1181,7 +1181,11 @@ fn command_palette_items() -> Vec<SelectorItem> {
             "Compare models",
             "Set or inspect parallel model comparison",
         ),
-        ("fallback", "Fallback chain", "Set or inspect fallback models"),
+        (
+            "fallback",
+            "Fallback chain",
+            "Set or inspect fallback models",
+        ),
         (
             "judge",
             "Judge model",
@@ -1192,7 +1196,11 @@ fn command_palette_items() -> Vec<SelectorItem> {
             "System prompt",
             "Set, inspect, or disable the system prompt",
         ),
-        ("clear", "Clear conversation", "Start with an empty transcript"),
+        (
+            "clear",
+            "Clear conversation",
+            "Start with an empty transcript",
+        ),
         ("help", "Help", "Show available chat commands"),
         ("exit", "Exit", "Leave the interactive session"),
     ]
@@ -1243,7 +1251,9 @@ fn model_selector_items(plan: &Plan, conversation: &Conversation) -> Vec<Selecto
         });
     }
 
-    if !conversation.model.is_empty() && !items.iter().any(|item| item.value == conversation.model) {
+    if !conversation.model.is_empty()
+        && !items.iter().any(|item| item.value == conversation.model)
+    {
         items.insert(
             0,
             SelectorItem {
@@ -1301,7 +1311,8 @@ fn model_for_provider(
     }
     if let Some((provider, model)) = reference.split_once('/') {
         if !model.is_empty()
-            && current_provider.is_some_and(|current| normalize_name(provider) == normalize_name(current))
+            && current_provider
+                .is_some_and(|current| normalize_name(provider) == normalize_name(current))
         {
             return Ok(model.to_owned());
         }
