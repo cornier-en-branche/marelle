@@ -1066,8 +1066,33 @@ fn repl_tui(
     loop {
         match tui.next_action()? {
             InputAction::Continue => {}
+            InputAction::OpenPalette => {
+                if let Some(command) = tui.select("Command palette", &command_palette_items())? {
+                    tui.set_input(format!("/{command} "))?;
+                }
+            }
             InputAction::Exit => return Ok(OK),
             InputAction::Submit(line) => {
+                let model_picker = slash_command(&line)
+                    .is_some_and(|(name, rest)| name == "model" && rest.is_empty());
+                let provider_picker = slash_command(&line)
+                    .is_some_and(|(name, rest)| name == "provider" && rest.is_empty());
+                let line = if model_picker {
+                    let items = model_selector_items(plan, &conversation);
+                    match tui.select("Choose a model", &items)? {
+                        Some(value) => format!("/model {value}"),
+                        None => continue,
+                    }
+                } else if provider_picker {
+                    let items = provider_selector_items(plan, &conversation);
+                    match tui.select("Choose a provider", &items)? {
+                        Some(value) => format!("/provider {value}"),
+                        None => continue,
+                    }
+                } else {
+                    line
+                };
+
                 if let Some((name, rest)) = slash_command(&line) {
                     let mut command_output = Vec::new();
                     let mut status_output = Vec::new();
@@ -1143,14 +1168,133 @@ fn repl_tui(
     }
 }
 
+fn command_palette_items() -> Vec<SelectorItem> {
+    [
+        ("model", "Choose model", "Switch the active model"),
+        ("provider", "Choose provider", "Switch the provider for bare model names"),
+        ("compare", "Compare models", "Set or inspect parallel model comparison"),
+        ("fallback", "Fallback chain", "Set or inspect fallback models"),
+        ("judge", "Judge model", "Choose a model to combine comparison results"),
+        ("system", "System prompt", "Set, inspect, or disable the system prompt"),
+        ("clear", "Clear conversation", "Start with an empty transcript"),
+        ("help", "Help", "Show available chat commands"),
+        ("exit", "Exit", "Leave the interactive session"),
+    ]
+    .into_iter()
+    .map(|(value, label, detail)| SelectorItem {
+        value: value.to_owned(),
+        label: label.to_owned(),
+        detail: detail.to_owned(),
+    })
+    .collect()
+}
+
+fn model_selector_items(plan: &Plan, conversation: &Conversation) -> Vec<SelectorItem> {
+    let mut items = Vec::new();
+    let current_provider = conversation
+        .provider_override
+        .as_deref()
+        .or_else(|| plan.primary.as_ref().map(|target| target.provider_name.as_str()));
+
+    for key in plan.config.keys() {
+        let Some(alias_name) = key
+            .strip_prefix("models.")
+            .and_then(|rest| rest.strip_suffix(".model"))
+        else {
+            continue;
+        };
+        let Some(model) = plan.config.get(key).map(str::trim).filter(|value| !value.is_empty()) else {
+            continue;
+        };
+        let provider_key = format!("models.{alias_name}.provider");
+        let provider = plan
+            .config
+            .get(&provider_key)
+            .map(str::trim)
+            .filter(|value| !value.is_empty())
+            .or(current_provider)
+            .unwrap_or("provider not set");
+        items.push(SelectorItem {
+            value: alias_name.to_owned(),
+            label: alias_name.to_owned(),
+            detail: format!("{provider} / {model}"),
+        });
+    }
+
+    if !conversation.model.is_empty()
+        && !items.iter().any(|item| item.value == conversation.model)
+    {
+        items.insert(
+            0,
+            SelectorItem {
+                value: conversation.model.clone(),
+                label: format!("Current: {}", conversation.display_model(plan)),
+                detail: current_provider
+                    .map_or_else(|| "current model".to_owned(), |provider| provider.to_owned()),
+            },
+        );
+    }
+    items
+}
+
+fn provider_selector_items(plan: &Plan, conversation: &Conversation) -> Vec<SelectorItem> {
+    let current = conversation
+        .provider_override
+        .as_deref()
+        .or_else(|| plan.primary.as_ref().map(|target| target.provider_name.as_str()));
+
+    provider_names(&plan.config)
+        .into_iter()
+        .map(|name| {
+            let kind = plan
+                .config
+                .get(&format!("providers.{name}.kind"))
+                .unwrap_or("openai-compatible");
+            let base_url = plan
+                .config
+                .get(&format!("providers.{name}.base_url"))
+                .unwrap_or("custom endpoint");
+            let label = if current.is_some_and(|value| normalize_name(value) == name) {
+                format!("{name}  (current)")
+            } else {
+                name.clone()
+            };
+            SelectorItem {
+                value: name,
+                label,
+                detail: format!("{kind} · {base_url}"),
+            }
+        })
+        .collect()
+}
+
+fn model_for_provider(
+    config: &Config,
+    reference: &str,
+    current_provider: Option<&str>,
+) -> Result<String, SettingError> {
+    if let Some(alias) = alias(config, reference)? {
+        return Ok(alias.model);
+    }
+    if let Some((provider, model)) = reference.split_once('/')
+        && !model.is_empty()
+        && current_provider.is_some_and(|current| normalize_name(provider) == normalize_name(current))
+    {
+        return Ok(model.to_owned());
+    }
+    Ok(reference.to_owned())
+}
+
 fn tui_model_labels(plan: &Plan, conversation: &Conversation, locale: Locale) -> (String, String) {
-    let provider = if conversation.compare.is_empty() {
+    let provider = if !conversation.compare.is_empty() {
+        tr(locale, "ui.compare")
+    } else if let Some(provider) = &conversation.provider_override {
+        provider.clone()
+    } else {
         plan.primary.as_ref().map_or_else(
             || tr(locale, "ui.compare"),
             |target| target.provider_name.clone(),
         )
-    } else {
-        tr(locale, "ui.compare")
     };
     (provider, conversation.display_model(plan))
 }
