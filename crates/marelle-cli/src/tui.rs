@@ -725,4 +725,63 @@ mod tests {
         assert_eq!(fit("abcdef", 4), "abcd");
         assert_eq!(fit("xy", 4), "xy  ");
     }
+
+    fn editor() -> Tui {
+        Tui {
+            output: stdout(),
+            theme: Theme::default(),
+            color: false,
+            provider: "zai".to_owned(),
+            model: "glm-4.7-flash".to_owned(),
+            status: "Ready".to_owned(),
+            input: String::new(),
+            cursor: 0,
+            history: VecDeque::new(),
+            history_index: None,
+            history_draft: String::new(),
+            messages: Vec::new(),
+            scroll: 0,
+        }
+    }
+
+    #[test]
+    fn editor_mutations_preserve_unicode_boundaries() {
+        let mut tui = editor();
+        tui.insert_text("aЖ🙂z");
+        tui.cursor = 2;
+        tui.backspace();
+        assert_eq!(tui.input, "a🙂z");
+        assert_eq!(tui.cursor, 1);
+
+        tui.delete();
+        assert_eq!(tui.input, "az");
+        assert_eq!(tui.cursor, 1);
+    }
+
+    #[test]
+    fn history_navigation_restores_the_unsubmitted_draft() {
+        let mut tui = editor();
+        tui.history.push_back("first".to_owned());
+        tui.history.push_back("second".to_owned());
+        tui.input = "unfinished".to_owned();
+        tui.cursor = tui.input.chars().count();
+
+        tui.history_up();
+        assert_eq!(tui.input, "second");
+        tui.history_up();
+        assert_eq!(tui.input, "first");
+        tui.history_down();
+        assert_eq!(tui.input, "second");
+        tui.history_down();
+        assert_eq!(tui.input, "unfinished");
+        assert_eq!(tui.history_index, None);
+    }
+
+    #[test]
+    fn command_hints_only_match_a_partial_slash_command() {
+        assert_eq!(command_hint("/mod"), "/model");
+        assert_eq!(command_hint("/"), "/clear   /compare   /exit   /fallback   /help   /judge   /model   /quit   /system");
+        assert_eq!(command_hint("hello"), "");
+        assert_eq!(command_hint("/model glm"), "");
+    }
 }
