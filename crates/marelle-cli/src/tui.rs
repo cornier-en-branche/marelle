@@ -150,6 +150,9 @@ impl Tui {
                 {
                     match key.code {
                         KeyCode::Esc => return Ok(None),
+                        KeyCode::Char('c') if key.modifiers.contains(KeyModifiers::CONTROL) => {
+                            return Ok(None);
+                        }
                         KeyCode::Enter => return Ok(Some(items[selected].value.clone())),
                         KeyCode::Up | KeyCode::Char('k') => {
                             selected = selected.saturating_sub(1);
