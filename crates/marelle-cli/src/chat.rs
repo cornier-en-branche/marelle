@@ -7,11 +7,13 @@
 //! the token counts, notes and errors go to standard error, so that
 //! `marelle chat ... > answer.txt` captures exactly the answer.
 
+use std::fs::{self, OpenOptions};
 use std::io::{self, Write};
+use std::path::PathBuf;
 use std::ops::ControlFlow;
 
 use marelle_config::{Config, Expected, SettingError};
-use marelle_core::{Message, Role, Session};
+use marelle_core::{Message, Role, Session, ToolCall};
 use marelle_i18n::{Locale, tr, tr_with};
 use marelle_providers::{
     ChatOutcome, ChatRequest, Client, FinishReason, NetworkSettings, ProviderConfig, ProviderError,
@@ -19,6 +21,7 @@ use marelle_providers::{
 };
 use tokio::runtime::Runtime;
 use tokio::task::JoinSet;
+use serde_json::{Value, json};
 
 use crate::Io;
 use crate::VERSION;
@@ -251,6 +254,7 @@ fn plan(
     config: &Config,
     locale: Locale,
     lookup: impl Fn(&str) -> Option<String>,
+    allow_no_model: bool,
 ) -> Result<Plan, Failure> {
     let known = provider_names(config);
     let fail = |error: ProviderError| provider_failure(locale, &error, &known);
@@ -277,6 +281,7 @@ fn plan(
             config, locale, &lookup, reference, None, &chat,
         )?),
         None if !compare.is_empty() => None,
+        None if allow_no_model => None,
         None if chosen("chat.provider").is_some() => {
             return Err(Failure::usage(tr(locale, "chat.no_model")));
         }
@@ -467,7 +472,7 @@ pub(crate) fn run(
         Ok(config) => config,
         Err(error) => return config_failure(locale, &error).print(io.err),
     };
-    let plan = match plan(&config, locale, |name| env_lookup(env_vars, name)) {
+    let plan = match plan(&config, locale, |name| env_lookup(env_vars, name), args.continue_session) {
         Ok(plan) => plan,
         Err(failure) => return failure.print(io.err),
     };
