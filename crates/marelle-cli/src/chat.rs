@@ -26,6 +26,7 @@ use crate::args::ChatArgs;
 use crate::messages::{Failure, config_failure, provider_failure, setting_failure};
 use crate::settings::{build_config, env_lookup};
 use crate::theme::{self, Role as ThemeRole, Theme};
+use crate::tui::{InputAction, Tui};
 
 const OK: u8 = 0;
 
@@ -1014,6 +1015,151 @@ enum Flow {
 
 /// The interactive session.
 fn repl(
+    runtime: &Runtime,
+    plan: &Plan,
+    conversation: Conversation,
+    locale: Locale,
+    env_vars: &[(String, String)],
+    io: &mut Io<'_>,
+) -> io::Result<u8> {
+    if io.interactive {
+        let provider = plan.primary.as_ref().map_or_else(
+            || tr(locale, "ui.compare"),
+            |target| target.provider_name.clone(),
+        );
+        let model = conversation.display_model(plan);
+        if let Ok(mut tui) = Tui::enter(
+            plan.ui.theme.clone(),
+            provider,
+            model,
+            io.color,
+        ) {
+            return repl_tui(runtime, plan, conversation, locale, env_vars, io, &mut tui);
+        }
+    }
+
+    // A real terminal may not support raw mode or alternate-screen control.
+    // Retain the line-oriented REPL as a safe fallback.
+    repl_line(runtime, plan, conversation, locale, env_vars, io)
+}
+
+fn repl_tui(
+    runtime: &Runtime,
+    plan: &Plan,
+    mut conversation: Conversation,
+    locale: Locale,
+    env_vars: &[(String, String)],
+    io: &mut Io<'_>,
+    tui: &mut Tui,
+) -> io::Result<u8> {
+    loop {
+        match tui.next_action()? {
+            InputAction::Continue => {}
+            InputAction::Exit => return Ok(OK),
+            InputAction::Submit(line) => {
+                if let Some((name, rest)) = slash_command(&line) {
+                    let mut command_output = Vec::new();
+                    let mut status_output = Vec::new();
+                    let flow = {
+                        let mut command_io = Io {
+                            input: io.input,
+                            out: &mut command_output,
+                            err: &mut status_output,
+                            interactive: false,
+                            color: false,
+                        };
+                        command(
+                            name,
+                            rest,
+                            plan,
+                            &mut conversation,
+                            locale,
+                            env_vars,
+                            &mut command_io,
+                        )?
+                    };
+
+                    if name == "clear" {
+                        tui.clear_messages()?;
+                    }
+                    let (provider, model) = tui_model_labels(plan, &conversation, locale);
+                    tui.set_model(provider, model)?;
+                    let status = status_line(&status_output);
+                    tui.set_status(if status.is_empty() { "Ready".to_owned() } else { status })?;
+
+                    if let Flow::Exit = flow {
+                        return Ok(OK);
+                    }
+                    continue;
+                }
+
+                tui.push_user(line)?;
+                tui.start_answer()?;
+                let mut status_output = Vec::new();
+                let result = {
+                    let mut answer = tui.answer_writer();
+                    let mut turn_io = Io {
+                        input: io.input,
+                        out: &mut answer,
+                        err: &mut status_output,
+                        // The TUI draws its own framing and generation state.
+                        interactive: false,
+                        color: false,
+                    };
+                    turn(
+                        runtime,
+                        plan,
+                        &mut conversation,
+                        locale,
+                        env_vars,
+                        &mut turn_io,
+                        false,
+                    )?
+                };
+                tui.finish_answer()?;
+                let status = status_line(&status_output);
+                let status = if status.is_empty() {
+                    if result == OK {
+                        "Ready".to_owned()
+                    } else {
+                        format!("Request finished with code {result}")
+                    }
+                } else {
+                    status
+                };
+                tui.set_status(status)?;
+
+                let (provider, model) = tui_model_labels(plan, &conversation, locale);
+                tui.set_model(provider, model)?;
+            }
+        }
+    }
+}
+
+fn tui_model_labels(
+    plan: &Plan,
+    conversation: &Conversation,
+    locale: Locale,
+) -> (String, String) {
+    let provider = if conversation.compare.is_empty() {
+        plan.primary.as_ref().map_or_else(
+            || tr(locale, "ui.compare"),
+            |target| target.provider_name.clone(),
+        )
+    } else {
+        tr(locale, "ui.compare")
+    };
+    (provider, conversation.display_model(plan))
+}
+
+fn status_line(bytes: &[u8]) -> String {
+    String::from_utf8_lossy(bytes)
+        .split_whitespace()
+        .collect::<Vec<_>>()
+        .join(" ")
+}
+
+fn repl_line(
     runtime: &Runtime,
     plan: &Plan,
     mut conversation: Conversation,
