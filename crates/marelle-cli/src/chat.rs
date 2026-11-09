@@ -740,13 +740,24 @@ pub(crate) fn run(
         judge: plan.judge.clone(),
         system: SystemChoice::Default,
     };
+    let restored = match restore_session_store(env_vars, &plan.config, &mut conversation, args.continue_session) {
+        Ok(restored) => restored,
+        Err(error) => {
+            writeln!(io.err, "marelle: cannot load saved sessions: {error}")?;
+            return Ok(2);
+        }
+    };
+    if args.continue_session && !restored {
+        return Failure::usage("No saved Marelle session was found. Start a chat first, or run marelle chat.")
+            .print(io.err);
+    }
     match prompt {
         Some(prompt) => {
             if prompt.trim().is_empty() {
                 return Failure::usage(tr(locale, "chat.empty_prompt")).print(io.err);
             }
             conversation.session.push(Message::new(Role::User, prompt));
-            turn(
+            let result = turn(
                 &runtime,
                 &plan,
                 &mut conversation,
@@ -755,7 +766,9 @@ pub(crate) fn run(
                 io,
                 false,
                 None,
-            )
+            )?;
+            persist_session_store(env_vars, &plan.config, &conversation)?;
+            Ok(result)
         }
         None => repl(&runtime, &plan, conversation, locale, env_vars, io),
     }
