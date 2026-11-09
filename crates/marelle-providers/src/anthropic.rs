@@ -67,14 +67,23 @@ pub(crate) fn build_body(
                 messages.push(json!({ "role": "assistant", "content": content }));
             }
             Role::Tool => {
-                messages.push(json!({
-                    "role": "user",
-                    "content": [{
-                        "type": "tool_result",
-                        "tool_use_id": message.tool_call_id.as_deref().unwrap_or_default(),
-                        "content": message.content
-                    }]
-                }));
+                let result = json!({
+                    "type": "tool_result",
+                    "tool_use_id": message.tool_call_id.as_deref().unwrap_or_default(),
+                    "content": message.content
+                });
+                let mut grouped = false;
+                if let Some(last) = messages.last_mut() {
+                    if last.get("role").and_then(Value::as_str) == Some("user") {
+                        if let Some(content) = last.get_mut("content").and_then(Value::as_array_mut) {
+                            content.push(result.clone());
+                            grouped = true;
+                        }
+                    }
+                }
+                if !grouped {
+                    messages.push(json!({ "role": "user", "content": [result] }));
+                }
             }
         }
     }
