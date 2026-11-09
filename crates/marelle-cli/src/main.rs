@@ -32,10 +32,7 @@ fn main() -> ExitCode {
         .any(|(name, value)| name == "TERM" && value == "dumb");
     let color = stderr.is_terminal() && !wants_no_colour && !dumb;
 
-    let interactive = stdin.is_terminal()
-        && stdout.is_terminal()
-        && stderr.is_terminal()
-        && !dumb;
+    let interactive = stdin.is_terminal() && stdout.is_terminal() && stderr.is_terminal() && !dumb;
     // Keep stdin unlocked for the terminal event reader used by the TUI.
     // BufReader only reads when a command consumes input; the TUI uses
     // Crossterm's event source while raw mode is active.
