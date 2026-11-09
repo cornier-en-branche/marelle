@@ -64,7 +64,7 @@ chat.judge.header = juge : {label}
 
 # --- session interactive ---
 repl.banner = {provider} / {model} - /help liste les commandes, /exit quitte
-repl.help = Commandes : /help  /clear  /model [nom]  /compare [modèles|off]  /fallback [modèles|off]  /judge [modèle|off]  /system [texte|off]  /exit
+repl.help = Commandes : /help  /clear  /model [nom]  /provider [id|off]  /session [new|nom]  /compare [modèles|off]  /fallback [modèles|off]  /judge [modèle|off]  /system [texte|off]  /exit  ·  Ctrl+P ouvre la palette de commandes
 repl.cleared = Conversation effacée.
 repl.model = Modèle : {model}
 repl.model_set = Modèle changé pour {model}.
