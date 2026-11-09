@@ -33,6 +33,7 @@ const MAX_MESSAGES: usize = 600;
 enum MessageKind {
     User,
     Assistant,
+    Notice,
 }
 
 #[derive(Debug, Clone)]
@@ -127,6 +128,15 @@ impl Tui {
         self.push_message(MessageKind::User, text);
         self.scroll = 0;
         self.render()
+    }
+
+    pub(crate) fn push_notice(&mut self, text: String) -> io::Result<()> {
+        if !text.trim().is_empty() {
+            self.push_message(MessageKind::Notice, text);
+            self.scroll = 0;
+            self.render()?;
+        }
+        Ok(())
     }
 
     pub(crate) fn start_answer(&mut self) -> io::Result<()> {
@@ -461,6 +471,7 @@ impl Tui {
             let (label, label_role, body_role) = match message.kind {
                 MessageKind::User => ("YOU", ThemeRole::Primary, ThemeRole::Text),
                 MessageKind::Assistant => ("MARELLE", ThemeRole::Accent, ThemeRole::Text),
+                MessageKind::Notice => ("INFO", ThemeRole::Secondary, ThemeRole::Dim),
             };
             transcript.push((format!("  {label}"), label_role));
             for line in wrap(&message.text, input_width) {
