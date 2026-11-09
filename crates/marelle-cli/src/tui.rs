@@ -149,11 +149,19 @@ impl Tui {
                     if matches!(key.kind, KeyEventKind::Press | KeyEventKind::Repeat) =>
                 {
                     match key.code {
-                        KeyCode::Esc => return Ok(None),
-                        KeyCode::Char('c') if key.modifiers.contains(KeyModifiers::CONTROL) => {
+                        KeyCode::Esc => {
+                            self.render()?;
                             return Ok(None);
                         }
-                        KeyCode::Enter => return Ok(Some(items[selected].value.clone())),
+                        KeyCode::Char('c') if key.modifiers.contains(KeyModifiers::CONTROL) => {
+                            self.render()?;
+                            return Ok(None);
+                        }
+                        KeyCode::Enter => {
+                            let value = items[selected].value.clone();
+                            self.render()?;
+                            return Ok(Some(value));
+                        }
                         KeyCode::Up | KeyCode::Char('k') => {
                             selected = selected.saturating_sub(1);
                         }
@@ -191,7 +199,7 @@ impl Tui {
         let height = usize::from(rows.max(1));
         let visible = height.saturating_sub(7).max(1);
         let scroll = selected.saturating_sub(visible.saturating_sub(1));
-        queue!(self.output, MoveTo(0, 0), Clear(ClearType::All))?;
+        queue!(self.output, Hide, MoveTo(0, 0), Clear(ClearType::All))?;
         self.draw_line(0, &format!("╭─ {title}"), ThemeRole::Banner, width)?;
         self.draw_line(
             1,
@@ -676,7 +684,7 @@ impl Tui {
 
         let hint = command_hint(&self.input);
         let footer = if hint.is_empty() {
-            "Enter send · Shift+Enter newline · ↑↓ history · PgUp/PgDn scroll · Ctrl+C quit"
+            "Enter send · Shift+Enter newline · ↑↓ history · PgUp/PgDn scroll · Ctrl+P palette · Ctrl+C quit"
                 .to_owned()
         } else {
             format!("{hint}  ·  Enter send · Shift+Enter newline")
