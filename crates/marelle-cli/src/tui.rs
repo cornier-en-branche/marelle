@@ -640,25 +640,32 @@ fn wrap(text: &str, width: usize) -> Vec<String> {
     let mut lines = Vec::new();
     let mut current = String::new();
     let mut count = 0usize;
+    let mut wrapped_at_boundary = false;
     for character in text.chars() {
         if character == '\n' {
-            lines.push(std::mem::take(&mut current));
+            if !wrapped_at_boundary || !current.is_empty() {
+                lines.push(std::mem::take(&mut current));
+            }
             count = 0;
+            wrapped_at_boundary = false;
             continue;
         }
         // Never let model output or configuration text inject terminal
         // control sequences into the UI. Tabs are rendered as spaces.
         if character == '\t' {
+            wrapped_at_boundary = false;
             for _ in 0..4 {
                 current.push(' ');
                 count += 1;
                 if count >= width {
                     lines.push(std::mem::take(&mut current));
                     count = 0;
+                    wrapped_at_boundary = true;
                 }
             }
             continue;
         }
+        wrapped_at_boundary = false;
         let safe = if character.is_control() {
             '�'
         } else {
@@ -669,9 +676,10 @@ fn wrap(text: &str, width: usize) -> Vec<String> {
         if count >= width {
             lines.push(std::mem::take(&mut current));
             count = 0;
+            wrapped_at_boundary = true;
         }
     }
-    if !current.is_empty() || lines.is_empty() || text.ends_with('\n') {
+    if !current.is_empty() || lines.is_empty() || (text.ends_with('\n') && !wrapped_at_boundary) {
         lines.push(current);
     }
     lines
