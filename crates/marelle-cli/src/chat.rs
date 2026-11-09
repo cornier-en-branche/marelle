@@ -344,6 +344,18 @@ struct Conversation {
     system: SystemChoice,
 }
 
+fn effective_provider_name(plan: &Plan, conversation: &Conversation) -> Option<String> {
+    if let Ok(Some(alias)) = alias(&plan.config, &conversation.model) {
+        if let Some(provider) = alias.provider {
+            return Some(provider);
+        }
+    }
+    conversation
+        .provider_override
+        .clone()
+        .or_else(|| plan.primary.as_ref().map(|target| target.provider_name.clone()))
+}
+
 impl Conversation {
     fn snapshot(&self) -> SavedSession {
         SavedSession {
@@ -598,11 +610,7 @@ fn single_turn(
         )?;
     }
     let spinner = interactive && plan.ui.spinner && io.color;
-    let provider_hint = conversation.provider_override.clone().or_else(|| {
-        plan.primary
-            .as_ref()
-            .map(|target| target.provider_name.clone())
-    });
+    let provider_hint = effective_provider_name(plan, conversation);
     let known = provider_names(&plan.config);
     let messages = conversation.session.messages().to_vec();
     let lookup = |name: &str| env_lookup(env_vars, name);
@@ -1329,11 +1337,7 @@ fn command_palette_items() -> Vec<SelectorItem> {
 
 fn model_selector_items(plan: &Plan, conversation: &Conversation) -> Vec<SelectorItem> {
     let mut items = Vec::new();
-    let current_provider = conversation.provider_override.as_deref().or_else(|| {
-        plan.primary
-            .as_ref()
-            .map(|target| target.provider_name.as_str())
-    });
+    let current_provider = effective_provider_name(plan, conversation);
 
     for key in plan.config.keys() {
         let Some(alias_name) = key
@@ -1356,7 +1360,7 @@ fn model_selector_items(plan: &Plan, conversation: &Conversation) -> Vec<Selecto
             .get(&provider_key)
             .map(str::trim)
             .filter(|value| !value.is_empty())
-            .or(current_provider)
+            .or(current_provider.as_deref())
             .unwrap_or("provider not set");
         items.push(SelectorItem {
             value: alias_name.to_owned(),
@@ -1402,11 +1406,7 @@ fn session_selector_items(conversation: &Conversation) -> Vec<SelectorItem> {
 }
 
 fn provider_selector_items(plan: &Plan, conversation: &Conversation) -> Vec<SelectorItem> {
-    let current = conversation.provider_override.as_deref().or_else(|| {
-        plan.primary
-            .as_ref()
-            .map(|target| target.provider_name.as_str())
-    });
+    let current = effective_provider_name(plan, conversation);
 
     provider_names(&plan.config)
         .into_iter()
@@ -1419,7 +1419,7 @@ fn provider_selector_items(plan: &Plan, conversation: &Conversation) -> Vec<Sele
                 .config
                 .get(&format!("providers.{name}.base_url"))
                 .unwrap_or("custom endpoint");
-            let label = if current.is_some_and(|value| normalize_name(value) == name) {
+            let label = if current.as_deref().is_some_and(|value| normalize_name(value) == name) {
                 format!("{name}  (current)")
             } else {
                 name.clone()
@@ -1455,13 +1455,9 @@ fn model_for_provider(
 fn tui_model_labels(plan: &Plan, conversation: &Conversation, locale: Locale) -> (String, String) {
     let provider = if !conversation.compare.is_empty() {
         tr(locale, "ui.compare")
-    } else if let Some(provider) = &conversation.provider_override {
-        provider.clone()
     } else {
-        plan.primary.as_ref().map_or_else(
-            || tr(locale, "ui.compare"),
-            |target| target.provider_name.clone(),
-        )
+        effective_provider_name(plan, conversation)
+            .unwrap_or_else(|| tr(locale, "ui.compare"))
     };
     (provider, conversation.display_model(plan))
 }
@@ -1475,14 +1471,7 @@ fn repl_line(
     io: &mut Io<'_>,
 ) -> io::Result<u8> {
     let theme = &plan.ui.theme;
-    let provider_label = conversation
-        .provider_override
-        .clone()
-        .or_else(|| {
-            plan.primary
-                .as_ref()
-                .map(|target| target.provider_name.clone())
-        })
+    let provider_label = effective_provider_name(plan, &conversation)
         .unwrap_or_else(|| tr(locale, "ui.compare"));
     if plan.ui.banner {
         write!(
@@ -1612,15 +1601,8 @@ fn command(
             say(io, "repl.cleared", &[])?;
         }
         "provider" if rest.is_empty() => {
-            let current = conversation
-                .provider_override
-                .as_deref()
-                .or_else(|| {
-                    plan.primary
-                        .as_ref()
-                        .map(|target| target.provider_name.as_str())
-                })
-                .unwrap_or("not selected");
+            let current = effective_provider_name(plan, conversation)
+                .unwrap_or_else(|| "not selected".to_owned());
             writeln!(io.err, "Current provider: {current}")?;
         }
         "session" if rest.is_empty() => {
