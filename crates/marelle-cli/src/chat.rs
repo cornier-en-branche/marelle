@@ -1653,6 +1653,8 @@ fn command_palette_items() -> Vec<SelectorItem> {
             "Clear conversation",
             "Remove messages from the current conversation",
         ),
+        ("tools", "Available tools", "Show the built-in local agent tools"),
+        ("skills", "Local skills", "List available local skill instructions"),
         ("help", "Help", "Show available chat commands"),
         ("exit", "Exit", "Leave the interactive session"),
     ]
@@ -1927,6 +1929,15 @@ fn command(
     match name {
         "exit" | "quit" | "q" => return Ok(Flow::Exit),
         "help" | "?" => say(io, "repl.help", &[])?,
+        "tools" => {
+            writeln!(io.err, "Available tools:")?;
+            for tool in crate::tools::definitions() {
+                writeln!(io.err, "  {:<16} {}", tool.name, tool.description)?;
+            }
+        }
+        "skills" => {
+            writeln!(io.err, "{}", crate::tools::list_skills())?;
+        }
         "clear" => {
             conversation.session.clear();
             say(io, "repl.cleared", &[])?;
