@@ -44,7 +44,15 @@ struct UiMessage {
 pub(crate) enum InputAction {
     Continue,
     Submit(String),
+    OpenPalette,
     Exit,
+}
+
+#[derive(Debug, Clone)]
+pub(crate) struct SelectorItem {
+    pub(crate) value: String,
+    pub(crate) label: String,
+    pub(crate) detail: String,
 }
 
 /// Owns terminal mode and all visible UI state.
@@ -114,6 +122,117 @@ impl Tui {
     pub(crate) fn set_status(&mut self, status: impl Into<String>) -> io::Result<()> {
         self.status = status.into().trim().to_owned();
         self.render()
+    }
+
+    pub(crate) fn set_input(&mut self, input: String) -> io::Result<()> {
+        self.input = input.chars().take(MAX_INPUT_CHARS).collect();
+        self.cursor = self.input.chars().count();
+        self.reset_history_navigation();
+        self.render()
+    }
+
+    /// Displays a keyboard-navigable selector and returns the chosen value.
+    pub(crate) fn select(
+        &mut self,
+        title: &str,
+        items: &[SelectorItem],
+    ) -> io::Result<Option<String>> {
+        if items.is_empty() {
+            return Ok(None);
+        }
+        let mut selected = 0usize;
+        loop {
+            self.render_selector(title, items, selected)?;
+            match event::read()? {
+                Event::Resize(_, _) => {}
+                Event::Key(key)
+                    if matches!(key.kind, KeyEventKind::Press | KeyEventKind::Repeat) =>
+                {
+                    match key.code {
+                        KeyCode::Esc => return Ok(None),
+                        KeyCode::Enter => return Ok(Some(items[selected].value.clone())),
+                        KeyCode::Up | KeyCode::Char('k') => {
+                            selected = selected.saturating_sub(1);
+                        }
+                        KeyCode::Down | KeyCode::Char('j') => {
+                            selected = (selected + 1).min(items.len() - 1);
+                        }
+                        KeyCode::Home => selected = 0,
+                        KeyCode::End => selected = items.len() - 1,
+                        KeyCode::PageUp => {
+                            let (_, height) = terminal::size().unwrap_or((80, 24));
+                            selected = selected.saturating_sub(usize::from(height).saturating_sub(8).max(1));
+                        }
+                        KeyCode::PageDown => {
+                            let (_, height) = terminal::size().unwrap_or((80, 24));
+                            selected = (selected + usize::from(height).saturating_sub(8).max(1))
+                                .min(items.len() - 1);
+                        }
+                        _ => {}
+                    }
+                }
+                _ => {}
+            }
+        }
+    }
+
+    fn render_selector(
+        &mut self,
+        title: &str,
+        items: &[SelectorItem],
+        selected: usize,
+    ) -> io::Result<()> {
+        let (columns, rows) = terminal::size().unwrap_or((80, 24));
+        let width = usize::from(columns.max(1));
+        let height = usize::from(rows.max(1));
+        let visible = height.saturating_sub(7).max(1);
+        let scroll = selected.saturating_sub(visible.saturating_sub(1));
+        queue!(self.output, MoveTo(0, 0), Clear(ClearType::All))?;
+        self.draw_line(0, &format!("╭─ {title}"), ThemeRole::Banner, width)?;
+        self.draw_line(
+            1,
+            "│ ↑↓ navigate · Enter select · Esc cancel · Home/End jump",
+            ThemeRole::Dim,
+            width,
+        )?;
+        self.draw_line(
+            2,
+            &format!("├{}┤", "─".repeat(width.saturating_sub(2))),
+            ThemeRole::Border,
+            width,
+        )?;
+
+        for row in 0..visible {
+            let index = scroll + row;
+            let Some(item) = items.get(index) else {
+                break;
+            };
+            let marker = if index == selected { "›" } else { " " };
+            let detail = if item.detail.is_empty() {
+                String::new()
+            } else {
+                format!("  ·  {}", item.detail)
+            };
+            self.draw_line(
+                3 + row,
+                &format!(" {marker} {}{detail}", item.label),
+                if index == selected {
+                    ThemeRole::Primary
+                } else {
+                    ThemeRole::Text
+                },
+                width,
+            )?;
+        }
+
+        let footer = format!("{} item(s)  ·  Esc returns to the conversation", items.len());
+        self.draw_line(
+            height.saturating_sub(2),
+            &footer,
+            ThemeRole::Dim,
+            width,
+        )?;
+        self.output.flush()
     }
 
     pub(crate) fn clear_messages(&mut self) -> io::Result<()> {
@@ -225,6 +344,10 @@ impl Tui {
             self.delete_previous_word();
             self.render()?;
             return Ok(InputAction::Continue);
+        }
+
+        if control && matches!(key.code, KeyCode::Char('p')) {
+            return Ok(InputAction::OpenPalette);
         }
 
         match key.code {
@@ -439,6 +562,7 @@ impl Tui {
             "/help",
             "/judge",
             "/model",
+            "/provider",
             "/quit",
             "/system",
         ];
@@ -745,6 +869,7 @@ fn command_hint(input: &str) -> String {
         "/help",
         "/judge",
         "/model",
+        "/provider",
         "/quit",
         "/system",
     ]
