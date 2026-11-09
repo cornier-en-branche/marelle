@@ -20,6 +20,8 @@ use crossterm::queue;
 use crossterm::style::Print;
 use crossterm::terminal::{self, Clear, ClearType, EnterAlternateScreen, LeaveAlternateScreen};
 
+use marelle_core::{Message, Role};
+
 use crate::VERSION;
 use crate::theme::{Role as ThemeRole, Theme};
 
@@ -247,6 +249,21 @@ impl Tui {
 
     pub(crate) fn clear_messages(&mut self) -> io::Result<()> {
         self.messages.clear();
+        self.scroll = 0;
+        self.render()
+    }
+
+    pub(crate) fn load_history(&mut self, messages: &[Message]) -> io::Result<()> {
+        self.messages.clear();
+        let start = messages.len().saturating_sub(MAX_MESSAGES);
+        self.messages.extend(messages[start..].iter().map(|message| UiMessage {
+            kind: match message.role {
+                Role::User => MessageKind::User,
+                Role::Assistant => MessageKind::Assistant,
+                Role::System | Role::Tool => MessageKind::Notice,
+            },
+            text: message.content.clone(),
+        }));
         self.scroll = 0;
         self.render()
     }
