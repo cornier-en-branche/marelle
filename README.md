@@ -122,7 +122,7 @@ Settings come in layers: built-in defaults, then environment variables, then fla
 | `chat.provider`, `chat.model` | none | What to talk to. `chat.model` can be `provider/model`. |
 | `chat.system` | none | System prompt |
 | `chat.max_tokens`, `chat.temperature` | none | Left to the provider when unset |
-| `chat.stream` | `true` | Print the answer as it arrives |
+| `chat.stream` | `true` | Stream the optional judge response; tool-enabled agent turns currently use complete responses so tool calls stay intact |
 | `chat.show_reasoning`, `chat.show_usage` | `false` | Reasoning and token counts on stderr |
 | `agent.max_turns` | `20` | Maximum tool round-trips per user request |
 | `agent.persist_sessions` | `true` | Save local conversations between runs |
@@ -153,7 +153,7 @@ The interface speaks English, Russian, French and Ukrainian. Choose with `--lang
 
 ## Roadmap
 
-1. **Talk.** Streaming chat with OpenAI-compatible and Anthropic providers. *Done.*
+1. **Talk.** OpenAI-compatible and Anthropic adapters, with both SSE streaming and complete-response decoding. Tool-enabled agent turns currently use complete responses. *Done.*
 2. **Settings and look.** TOML setting files, global and per project, with `config set`, `get` and `unset` and a description for every key. A themed interface in the spirit of [Hermes Agent](https://github.com/NousResearch/hermes-agent): banner, information panel, framed answers, spinner, in wisteria purple by default with any colour settable as HEX. *Done.*
 3. **Many models.** Model aliases, asking several models at once and comparing the answers, fallback chains, and a judge model that merges them. *Done.*
 4. **Act.** Structured tool calling for OpenAI-compatible and Anthropic providers, local file/search/terminal tools, URL fetching, local skills and allow/ask/deny permissions. *Prototype implemented.*
