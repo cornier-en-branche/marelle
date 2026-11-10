@@ -1598,7 +1598,7 @@ fn repl(
     env_vars: &[(String, String)],
     io: &mut Io<'_>,
 ) -> io::Result<u8> {
-    if io.interactive {
+    if io.interactive && io.screen {
         let provider = plan.primary.as_ref().map_or_else(
             || tr(locale, "ui.compare"),
             |target| target.provider_name.clone(),
@@ -1677,6 +1677,7 @@ fn repl_tui(
                             out: &mut command_output,
                             err: &mut status_output,
                             interactive: false,
+                            screen: false,
                             color: false,
                         };
                         command(
@@ -1719,6 +1720,7 @@ fn repl_tui(
                         out: &mut answer_output,
                         err: &mut status_output,
                         interactive: false,
+                        screen: false,
                         color: false,
                     };
                     turn(

@@ -44,6 +44,7 @@ fn main() -> ExitCode {
         out: &mut out,
         err: &mut err,
         interactive,
+        screen: interactive,
         color,
     };
 

@@ -8,7 +8,7 @@
 //! terminal driver for raw mode, keyboard events and screen control.
 
 use std::collections::VecDeque;
-use std::io::{self, Stdout, Write, stdout};
+use std::io::{self, IsTerminal, Stdout, Write, stdout};
 
 use crossterm::cursor::{Hide, MoveTo, Show};
 use crossterm::event::{
@@ -84,6 +84,15 @@ impl Tui {
         model: String,
         color: bool,
     ) -> io::Result<Self> {
+        // Crossterm falls back to /dev/tty when standard input is not a
+        // terminal, which would take over the screen of whoever started a
+        // pipeline or a test. Refuse unless both ends really are terminals.
+        if !io::stdin().is_terminal() || !stdout().is_terminal() {
+            return Err(io::Error::new(
+                io::ErrorKind::Unsupported,
+                "standard input and output are not both terminals",
+            ));
+        }
         terminal::enable_raw_mode()?;
         let mut output = stdout();
         if let Err(error) = execute!(

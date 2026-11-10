@@ -39,6 +39,12 @@ pub struct Io<'a> {
     /// Whether `input` is a person at a terminal. Without a prompt on the
     /// command line, that starts a session; a pipe is read as the prompt.
     pub interactive: bool,
+    /// Whether the process owns a real terminal that the full-screen
+    /// interface may take over: standard input, output and error are all
+    /// terminals. Only `main` sets this. Tests and anything that embeds the
+    /// library leave it off, so that a run never reaches for the terminal of
+    /// whoever started it.
+    pub screen: bool,
     /// Whether `err` understands colour.
     pub color: bool,
 }
@@ -208,6 +214,7 @@ mod tests {
             out: &mut out,
             err: &mut err,
             interactive: false,
+            screen: false,
             color: false,
         };
         let code = run(&args, &env, &mut io).expect("writing to memory cannot fail");

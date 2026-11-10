@@ -33,6 +33,9 @@ fn marelle(args: &[&str], env: &[(&str, &str)], stdin: &str, interactive: bool) 
         out: &mut out,
         err: &mut err,
         interactive,
+        // These runs are in-process. Whatever terminal started the test
+        // binary must never be taken over by the full-screen interface.
+        screen: false,
         color: false,
     };
     let code = run(&args, &env, &mut io).expect("writing to memory cannot fail");
