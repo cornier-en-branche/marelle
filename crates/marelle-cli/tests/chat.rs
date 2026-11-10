@@ -108,8 +108,7 @@ fn body(server: &MockServer, index: usize) -> Value {
 }
 
 fn contents(body: &Value) -> Vec<(String, String)> {
-    const AGENT_GUIDANCE: &str =
-        "You are Marelle, a local coding and research assistant.";
+    const AGENT_GUIDANCE: &str = "You are Marelle, a local coding and research assistant.";
     body["messages"]
         .as_array()
         .expect("messages")
@@ -118,8 +117,7 @@ fn contents(body: &Value) -> Vec<(String, String)> {
             let role = message["role"].as_str()?.to_owned();
             let content = message["content"].as_str()?.to_owned();
             if role == "system" {
-                if let Some((user_system, _)) =
-                    content.split_once(&format!("\n\n{AGENT_GUIDANCE}"))
+                if let Some((user_system, _)) = content.split_once(&format!("\n\n{AGENT_GUIDANCE}"))
                 {
                     if user_system.trim().is_empty() {
                         return None;
