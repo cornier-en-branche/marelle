@@ -275,7 +275,8 @@ mod tests {
                 .lines()
                 .filter(|line| line.starts_with("  -") || line.starts_with("      --"))
                 .collect();
-            assert_eq!(rows.len(), 9, "{locale:?}: option rows in:\n{out}");
+            // Four short chat flags, six long chat flags and one global flag.
+            assert_eq!(rows.len(), 11, "{locale:?}: option rows in:\n{out}");
             for row in rows {
                 let cells: Vec<char> = row.chars().collect();
                 assert_eq!(cells[24], ' ', "{locale:?}: {row}");
