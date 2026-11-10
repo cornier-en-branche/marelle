@@ -421,23 +421,22 @@ mod tests {
     #[test]
     fn tool_messages_are_supported_and_preserve_call_ids() {
         let mut with_tool = request();
-        with_tool.messages.push(Message::new(Role::Tool, "result"));
-        with_tool.messages[0] = Message::with_tool_calls(
-            "",
-            vec![ToolCall {
-                id: "call-1".into(),
-                name: "read_file".into(),
-                arguments: r#"{"path":"README.md"}"#.into(),
-            }],
-        );
-        with_tool
-            .messages
-            .push(Message::tool_result("call-1", "read_file", "contents"));
+        with_tool.messages = vec![
+            Message::with_tool_calls(
+                "",
+                vec![ToolCall {
+                    id: "call-1".into(),
+                    name: "read_file".into(),
+                    arguments: r#"{"path":"README.md"}"#.into(),
+                }],
+            ),
+            Message::tool_result("call-1", "read_file", "contents"),
+        ];
         let body = build_body(&provider(), &with_tool).unwrap();
         let messages = body["messages"].as_array().unwrap();
-        assert_eq!(messages[1]["tool_calls"][0]["id"], "call-1");
-        assert_eq!(messages[2]["tool_call_id"], "call-1");
-        assert_eq!(messages[2]["content"], "contents");
+        assert_eq!(messages[0]["tool_calls"][0]["id"], "call-1");
+        assert_eq!(messages[1]["tool_call_id"], "call-1");
+        assert_eq!(messages[1]["content"], "contents");
     }
 
     #[test]
