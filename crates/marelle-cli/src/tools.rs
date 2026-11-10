@@ -315,6 +315,16 @@ fn edit_file(args: &Value, config: &Config) -> Result<String, String> {
         return Err("The old fragment cannot be empty.".to_owned());
     }
     let path = checked_path(raw, config, true)?;
+    let metadata = fs::metadata(&path).map_err(|error| error.to_string())?;
+    if !metadata.is_file() {
+        return Err(format!("Not a regular file: {raw}"));
+    }
+    if metadata.len() > MAX_FILE_BYTES {
+        return Err(format!(
+            "File exceeds the {} byte edit limit.",
+            MAX_FILE_BYTES
+        ));
+    }
     let mut content = fs::read_to_string(&path)
         .map_err(|error| format!("Cannot read UTF-8 text file: {error}"))?;
     let count = content.matches(old).count();
@@ -404,10 +414,20 @@ fn search_text(args: &Value, config: &Config) -> Result<String, String> {
     let mut matches = Vec::new();
     let mut seen = 0;
     if path.is_file() {
+        let metadata = fs::metadata(&path).map_err(|error| error.to_string())?;
+        if metadata.len() > MAX_FILE_BYTES {
+            return Err(format!(
+                "File exceeds the {} byte search limit.",
+                MAX_FILE_BYTES
+            ));
+        }
         let content = fs::read_to_string(&path).map_err(|error| error.to_string())?;
         for (index, line) in content.lines().enumerate() {
             if line.contains(query) {
                 matches.push(format!("{}:{}: {}", path.display(), index + 1, line.trim()));
+                if matches.len() >= MAX_SEARCH_MATCHES {
+                    break;
+                }
             }
         }
     } else {
@@ -416,7 +436,7 @@ fn search_text(args: &Value, config: &Config) -> Result<String, String> {
     Ok(if matches.is_empty() {
         "No matches.".to_owned()
     } else {
-        matches.join("\n")
+        truncate(matches.join("\n"))
     })
 }
 
@@ -763,6 +783,31 @@ mod tests {
         let args = json!({"path": target.to_string_lossy(), "content": "created"});
         write_file(&args, &config).unwrap();
         assert_eq!(fs::read_to_string(&target).unwrap(), "created");
+        fs::remove_dir_all(&dir).unwrap();
+    }
+
+    #[test]
+    fn edit_and_search_reject_oversized_single_files() {
+        let dir = std::env::temp_dir().join(format!("marelle-tools-large-{}", std::process::id()));
+        let _ = fs::remove_dir_all(&dir);
+        fs::create_dir_all(&dir).unwrap();
+        let path = dir.join("large.txt");
+        fs::write(&path, vec![b'x'; MAX_FILE_BYTES as usize + 1]).unwrap();
+
+        let mut config = Config::new();
+        config.set(
+            Layer::Default,
+            "permissions.allowed_paths",
+            format!("[\\"{}\\"]", dir.display()),
+        );
+        config.set(Layer::Default, "permissions.denied_paths", "[]");
+
+        let edit_args = json!({"path": path.to_string_lossy(), "old": "x", "new": "y"});
+        assert!(edit_file(&edit_args, &config).unwrap_err().contains("edit limit"));
+
+        let search_args = json!({"path": path.to_string_lossy(), "query": "x"});
+        assert!(search_text(&search_args, &config).unwrap_err().contains("search limit"));
+
         fs::remove_dir_all(&dir).unwrap();
     }
 
