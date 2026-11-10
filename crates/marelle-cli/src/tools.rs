@@ -803,10 +803,18 @@ mod tests {
         config.set(Layer::Default, "permissions.denied_paths", "[]");
 
         let edit_args = json!({"path": path.to_string_lossy(), "old": "x", "new": "y"});
-        assert!(edit_file(&edit_args, &config).unwrap_err().contains("edit limit"));
+        assert!(
+            edit_file(&edit_args, &config)
+                .unwrap_err()
+                .contains("edit limit")
+        );
 
         let search_args = json!({"path": path.to_string_lossy(), "query": "x"});
-        assert!(search_text(&search_args, &config).unwrap_err().contains("search limit"));
+        assert!(
+            search_text(&search_args, &config)
+                .unwrap_err()
+                .contains("search limit")
+        );
 
         fs::remove_dir_all(&dir).unwrap();
     }
