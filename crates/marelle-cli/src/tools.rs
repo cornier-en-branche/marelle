@@ -798,7 +798,7 @@ mod tests {
         config.set(
             Layer::Default,
             "permissions.allowed_paths",
-            format!("[\\"{}\\"]", dir.display()),
+            format!("[\"{}\"]", dir.display()),
         );
         config.set(Layer::Default, "permissions.denied_paths", "[]");
 
