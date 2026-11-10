@@ -878,6 +878,7 @@ fn compose(words: &[String], piped: Option<&str>) -> String {
 ///
 /// The last message of the session is the user's. It stays only if the
 /// model answered, so a failed turn can simply be asked again.
+#[allow(clippy::too_many_arguments)]
 fn turn(
     runtime: &Runtime,
     plan: &Plan,
@@ -906,6 +907,7 @@ fn turn(
 
 /// Runs the model/tool loop. Tool calls are never executed without passing
 /// through Marelle's permission checks.
+#[allow(clippy::too_many_arguments)]
 fn single_turn(
     runtime: &Runtime,
     plan: &Plan,
