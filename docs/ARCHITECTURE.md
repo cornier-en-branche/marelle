@@ -19,12 +19,12 @@ marelle chat "question"                      crates/marelle-cli
         v
  marelle-providers   ProviderConfig (protocol, address, auth, where the key lives)
         |            Client::chat(request, sink)  --- HTTPS --->  the provider
-        |            SSE parser + one decoder per protocol  --->  StreamEvent
+        |            SSE parser + complete-response decoder + protocol decoders
         v
  sink in marelle-cli answer -> stdout; reasoning, usage, notes, errors -> stderr
 ```
 
-The command line takes its input and output as parameters (`Io`), so a whole session can be driven by a test without touching the process.
+The command line takes its input and output as parameters (`Io`), so a whole session can be driven by a test without touching the process. Both provider adapters decode SSE and complete JSON responses. The tool-enabled agent loop currently requests complete responses so structured tool calls are not assembled from partial fragments; the optional judge response can use streaming.
 
 ## Crates
 
@@ -33,7 +33,7 @@ The command line takes its input and output as parameters (`Io`), so a whole ses
 | `marelle-core` | Messages, roles, sessions | Basic types |
 | `marelle-config` | Layered configuration with provenance, typed getters, secret redaction | Defaults, global and project TOML files, environment, flags |
 | `marelle-i18n` | Message catalogs (en, ru, fr, uk) | Working |
-| `marelle-providers` | Provider settings, presets, the HTTP client, both wire protocols | OpenAI-compatible and Anthropic, streaming |
+| `marelle-providers` | Provider settings, presets, the HTTP client, both wire protocols | OpenAI-compatible and Anthropic, SSE streaming and complete responses |
 | `marelle-cli` | The `marelle` command | `chat`, `providers`, `config show/get/set/unset/schema/path` |
 | `marelle-testkit` | A mock HTTP server for tests (not published) | Used by the provider and CLI tests |
 
@@ -57,7 +57,7 @@ Two protocols cover the vendors we know of: OpenAI-compatible endpoints (OpenAI,
 
 ## Roadmap
 
-1. **Talk.** HTTP adapters for both protocols and a streaming `marelle chat`. *Done.*
+1. **Talk.** HTTP adapters for both protocols, including SSE streaming and complete-response decoding. Tool-enabled agent turns currently use complete responses. *Done.*
 2. **Settings and look.** TOML files, global and per project, with `config set`, `get` and `unset`, and a schema that describes every key (type, default, allowed values). A themed interface: banner, information panel, framed answers, spinner, built to adapt to narrow phone screens. The default theme is wisteria purple, and every colour role can be set as HEX. *Done.*
 3. **Many models.** Model aliases, asking several models in parallel and comparing their answers, fallback chains, and a judge model that merges them. *Done.*
 4. **Act.** The tool loop, built-in tools (files, shell, fetch) and a permission policy: allow, ask or deny by path and command.
