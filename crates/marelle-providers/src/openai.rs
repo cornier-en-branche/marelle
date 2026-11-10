@@ -421,6 +421,8 @@ mod tests {
     #[test]
     fn tool_messages_are_supported_and_preserve_call_ids() {
         let mut with_tool = request();
+        // With a system prompt the first wire message is the system one.
+        with_tool.system = None;
         with_tool.messages = vec![
             Message::with_tool_calls(
                 "",
