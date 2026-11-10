@@ -119,7 +119,7 @@ fn contents(body: &Value) -> Vec<(String, String)> {
             let content = message["content"].as_str()?.to_owned();
             if role == "system" {
                 if let Some((user_system, _)) =
-                    content.split_once(&format!("\\n\\n{AGENT_GUIDANCE}"))
+                    content.split_once(&format!("\n\n{AGENT_GUIDANCE}"))
                 {
                     if user_system.trim().is_empty() {
                         return None;
@@ -864,7 +864,7 @@ fn an_anthropic_style_provider_works_the_same_way() {
         body(&server, 0)["system"]
             .as_str()
             .unwrap()
-            .starts_with("Be brief.\\n\\nYou are Marelle"),
+            .starts_with("Be brief.\n\nYou are Marelle"),
     );
 }
 
