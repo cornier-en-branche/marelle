@@ -108,15 +108,29 @@ fn body(server: &MockServer, index: usize) -> Value {
 }
 
 fn contents(body: &Value) -> Vec<(String, String)> {
+    const AGENT_GUIDANCE: &str =
+        "You are Marelle, a local coding and research assistant.";
     body["messages"]
         .as_array()
         .expect("messages")
         .iter()
-        .map(|m| {
-            (
-                m["role"].as_str().unwrap().to_owned(),
-                m["content"].as_str().unwrap().to_owned(),
-            )
+        .filter_map(|message| {
+            let role = message["role"].as_str()?.to_owned();
+            let content = message["content"].as_str()?.to_owned();
+            if role == "system" {
+                if let Some((user_system, _)) =
+                    content.split_once(&format!("\\n\\n{AGENT_GUIDANCE}"))
+                {
+                    if user_system.trim().is_empty() {
+                        return None;
+                    }
+                    return Some((role, user_system.to_owned()));
+                }
+                if content.starts_with(AGENT_GUIDANCE) {
+                    return None;
+                }
+            }
+            Some((role, content))
         })
         .collect()
 }
@@ -846,7 +860,12 @@ fn an_anthropic_style_provider_works_the_same_way() {
     let sent = &server.requests()[0];
     assert_eq!(sent.path, "/v1/messages");
     assert_eq!(sent.header("x-api-key"), Some(KEY));
-    assert_eq!(body(&server, 0)["system"], "Be brief.");
+    assert!(
+        body(&server, 0)["system"]
+            .as_str()
+            .unwrap()
+            .starts_with("Be brief.\\n\\nYou are Marelle"),
+    );
 }
 
 #[test]
