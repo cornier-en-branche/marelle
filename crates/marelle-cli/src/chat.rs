@@ -1055,9 +1055,15 @@ fn single_turn(
                     let failure = provider_failure(locale, &error, &known);
                     if !any_tool_call && events.is_empty() && !last_attempt {
                         failure.print(io.err)?;
-                        writeln!(io.err, "{}", tr_with(locale, "chat.fallback.try", &[
-                            ("model", reference), ("next", &attempts[index + 1])
-                        ]))?;
+                        writeln!(
+                            io.err,
+                            "{}",
+                            tr_with(
+                                locale,
+                                "chat.fallback.try",
+                                &[("model", reference), ("next", &attempts[index + 1])]
+                            )
+                        )?;
                         break;
                     }
                     if conversation
