@@ -6,7 +6,7 @@ app.tagline = Налаштовуваний ШІ-агент для вашого �
 
 # --- довідка ---
 help.usage = Використання
-help.usage.line = marelle [--lang <код>] <команда> [параметри]
+help.usage.line = marelle [--lang <code>] [chat] [параметри] [запит]
 help.commands = Команди
 help.cmd.chat = Розмова з моделлю: одне запитання, конвеєр або інтерактивний сеанс
 help.cmd.providers = Перелік провайдерів і звідки беруться їхні API-ключі
@@ -15,6 +15,8 @@ help.cmd.help = Показати цю довідку
 help.cmd.version = Показати версію
 help.chat_options = Параметри chat
 help.opt.provider = Ідентифікатор провайдера (див.: marelle providers)
+help.opt.query = Надіслати один запит і завершити роботу
+help.opt.continue = Продовжити останню збережену розмову
 help.opt.model = Назва моделі або провайдер/модель, якщо провайдера не вибрано
 help.opt.system = Системний промпт
 help.opt.max_tokens = Обмежити довжину відповіді в токенах
@@ -27,7 +29,7 @@ help.opt.lang = Мова інтерфейсу: en, ru, fr, uk
 help.examples = Приклади
 help.example.ask = Поставити одне запитання
 help.example.pipe = Передати вивід команди разом із запитанням («-» означає stdin)
-help.example.repl = Запустити інтерактивний сеанс
+help.example.repl = Запустити інтерактивний чат командою `marelle` або `marelle --tui`
 help.env = Будь-яке налаштування можна задати й через середовище: MARELLE_CHAT__MODEL=zai/MODEL задає chat.model.
 help.exit_codes = Коди виходу: 0 — успіх, 1 — помилка провайдера або мережі, 2 — помилка у виклику чи в налаштуваннях.
 
@@ -64,7 +66,7 @@ chat.judge.header = суддя: {label}
 
 # --- інтерактивний сеанс ---
 repl.banner = {provider} / {model} - /help покаже команди, /exit завершить сеанс
-repl.help = Команди: /help  /clear  /model [назва]  /compare [моделі|off]  /fallback [моделі|off]  /judge [модель|off]  /system [текст|off]  /exit
+repl.help = Команди: /help  /clear  /model [назва]  /provider [id|off]  /session [new|назва]  /compare [моделі|off]  /fallback [моделі|off]  /judge [модель|off]  /system [текст|off]  /tools  /skills  /exit  ·  Ctrl+P відкриває палітру команд
 repl.cleared = Розмову очищено.
 repl.model = Модель: {model}
 repl.model_set = Модель переключено на {model}.
@@ -158,3 +160,21 @@ fail.invalid_value = Налаштування {key}: {reason}.
 fail.config_file = Не вдалося використати файл налаштувань: {detail}
 expected.list = список слів
 expected.hex_color = колір у HEX, наприклад #B57EDC
+
+update.available = Вийшла нова версія {latest} (зараз {current}). Докладніше: {url}
+tool.confirm.title = {label}?
+tool.confirm.allow_once = Дозволити один раз
+tool.confirm.allow_once.detail = Виконати цей виклик інструменту один раз
+tool.confirm.allow_always = Дозволити завжди
+tool.confirm.allow_always.detail = Більше не питати про такі інструменти до кінця сеансу
+tool.confirm.deny = Заборонити
+tool.confirm.deny.detail = Не виконувати цей виклик інструменту
+tool.label.terminal = Виконати команду в терміналі
+tool.label.read = Прочитати файл
+tool.label.list = Показати каталог
+tool.label.search = Шукати у файлах
+tool.label.modify = Змінити файл
+tool.label.fetch = Завантажити сторінку
+tool.notice.call = Інструмент {name}: {detail}
+tool.notice.result = {name} повернув: {result}
+agent.max_turns.note = Агента зупинено: досягнуто agent.max_turns ({max}).

@@ -6,7 +6,7 @@ app.tagline = Un agent IA configurable pour votre terminal
 
 # --- aide ---
 help.usage = Utilisation
-help.usage.line = marelle [--lang <code>] <commande> [options]
+help.usage.line = marelle [--lang <code>] [chat] [options] [demande]
 help.commands = Commandes
 help.cmd.chat = Discuter avec un modèle : une question, un tube ou une session interactive
 help.cmd.providers = Lister les fournisseurs et l'origine de leurs clés d'API
@@ -15,6 +15,8 @@ help.cmd.help = Afficher cette aide
 help.cmd.version = Afficher la version
 help.chat_options = Options de chat
 help.opt.provider = Identifiant du fournisseur (voir : marelle providers)
+help.opt.query = Envoyer une demande puis quitter
+help.opt.continue = Reprendre la dernière conversation enregistrée
 help.opt.model = Nom du modèle, ou fournisseur/modèle si aucun fournisseur n'est choisi
 help.opt.system = Prompt système
 help.opt.max_tokens = Limiter la longueur de la réponse, en jetons
@@ -27,7 +29,7 @@ help.opt.lang = Langue de l'interface : en, ru, fr, uk
 help.examples = Exemples
 help.example.ask = Poser une seule question
 help.example.pipe = Envoyer la sortie d'une commande avec une question (« - » désigne stdin)
-help.example.repl = Lancer une session interactive
+help.example.repl = Ouvrir le chat interactif avec `marelle` ou `marelle --tui`
 help.env = Tout réglage peut aussi venir de l'environnement : MARELLE_CHAT__MODEL=zai/MODEL définit chat.model.
 help.exit_codes = Codes de sortie : 0 succès, 1 erreur du fournisseur ou du réseau, 2 erreur d'usage ou de configuration.
 
@@ -64,7 +66,7 @@ chat.judge.header = juge : {label}
 
 # --- session interactive ---
 repl.banner = {provider} / {model} - /help liste les commandes, /exit quitte
-repl.help = Commandes : /help  /clear  /model [nom]  /compare [modèles|off]  /fallback [modèles|off]  /judge [modèle|off]  /system [texte|off]  /exit
+repl.help = Commandes : /help  /clear  /model [nom]  /provider [id|off]  /session [new|nom]  /compare [modèles|off]  /fallback [modèles|off]  /judge [modèle|off]  /system [texte|off]  /tools  /skills  /exit  ·  Ctrl+P ouvre la palette
 repl.cleared = Conversation effacée.
 repl.model = Modèle : {model}
 repl.model_set = Modèle changé pour {model}.
@@ -158,3 +160,21 @@ fail.invalid_value = Réglage {key} : {reason}.
 fail.config_file = Impossible d'utiliser le fichier de réglages : {detail}
 expected.list = une liste de mots
 expected.hex_color = une couleur HEX, par exemple #B57EDC
+
+update.available = La version {latest} est disponible (actuel : {current}). Voir {url}
+tool.confirm.title = {label} ?
+tool.confirm.allow_once = Autoriser une fois
+tool.confirm.allow_once.detail = Exécuter cet appel d'outil une seule fois
+tool.confirm.allow_always = Autoriser toujours
+tool.confirm.allow_always.detail = Ne plus demander pour ce type d'outil jusqu'à la fin de la session
+tool.confirm.deny = Refuser
+tool.confirm.deny.detail = Ne pas exécuter cet appel d'outil
+tool.label.terminal = Exécuter une commande dans le terminal
+tool.label.read = Lire un fichier
+tool.label.list = Lister un répertoire
+tool.label.search = Chercher dans les fichiers
+tool.label.modify = Modifier un fichier
+tool.label.fetch = Télécharger une page
+tool.notice.call = Outil {name} : {detail}
+tool.notice.result = {name} a renvoyé : {result}
+agent.max_turns.note = Agent arrêté : agent.max_turns ({max}) atteint.

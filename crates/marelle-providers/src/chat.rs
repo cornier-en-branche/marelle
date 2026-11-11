@@ -5,7 +5,19 @@
 
 use std::ops::ControlFlow;
 
-use marelle_core::Message;
+use marelle_core::{Message, ToolCall};
+use serde_json::Value;
+
+/// A function the model may call.
+#[derive(Debug, Clone, PartialEq)]
+pub struct ToolDefinition {
+    /// Stable function name.
+    pub name: String,
+    /// Human-readable purpose.
+    pub description: String,
+    /// JSON Schema for the function arguments.
+    pub parameters: Value,
+}
 
 /// One chat request, independent of the provider's wire format.
 #[derive(Debug, Clone, PartialEq)]
@@ -22,6 +34,8 @@ pub struct ChatRequest {
     pub temperature: Option<f64>,
     /// Whether to receive the answer as a stream.
     pub stream: bool,
+    /// Functions exposed to the model for this request.
+    pub tools: Vec<ToolDefinition>,
 }
 
 /// A piece of an answer, delivered as it arrives.
@@ -92,6 +106,8 @@ pub struct ChatOutcome {
     pub usage: Usage,
     /// Why the model stopped.
     pub finish: FinishReason,
+    /// Functions requested by the model.
+    pub tool_calls: Vec<ToolCall>,
 }
 
 /// Collects what a decoder sees and forwards events to the sink.
@@ -100,6 +116,7 @@ pub(crate) struct Collector {
     pub text: String,
     pub usage: Usage,
     pub finish: Option<FinishReason>,
+    pub tool_calls: Vec<ToolCall>,
     pub done: bool,
 }
 
@@ -124,6 +141,7 @@ impl Collector {
             text: self.text,
             usage: self.usage,
             finish: finish.or(self.finish).unwrap_or(FinishReason::Stop),
+            tool_calls: self.tool_calls,
         }
     }
 }

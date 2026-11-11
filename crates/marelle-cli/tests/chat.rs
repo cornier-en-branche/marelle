@@ -33,6 +33,9 @@ fn marelle(args: &[&str], env: &[(&str, &str)], stdin: &str, interactive: bool) 
         out: &mut out,
         err: &mut err,
         interactive,
+        // These runs are in-process. Whatever terminal started the test
+        // binary must never be taken over by the full-screen interface.
+        screen: false,
         color: false,
     };
     let code = run(&args, &env, &mut io).expect("writing to memory cannot fail");
@@ -89,24 +92,18 @@ fn chat(
     marelle(args, &env, stdin, interactive)
 }
 
-fn data(value: &Value) -> String {
-    format!("data: {value}\n\n")
-}
-
-fn delta(content: &str) -> String {
-    data(&json!({"choices": [{"delta": {"content": content}}]}))
-}
-
-fn finish(reason: &str) -> String {
-    data(&json!({"choices": [{"delta": {}, "finish_reason": reason}]}))
-}
-
-/// A complete streamed answer.
+/// A complete non-streamed answer for the agent's tool-capable request path.
 fn answer(pieces: &[&str]) -> Reply {
-    let mut chunks: Vec<String> = pieces.iter().map(|piece| delta(piece)).collect();
-    chunks.push(finish("stop"));
-    chunks.push("data: [DONE]\n\n".to_owned());
-    Reply::sse(chunks)
+    Reply::json(
+        200,
+        &json!({
+            "choices": [{
+                "message": {"content": pieces.concat()},
+                "finish_reason": "stop"
+            }]
+        })
+        .to_string(),
+    )
 }
 
 fn body(server: &MockServer, index: usize) -> Value {
@@ -114,21 +111,33 @@ fn body(server: &MockServer, index: usize) -> Value {
 }
 
 fn contents(body: &Value) -> Vec<(String, String)> {
+    const AGENT_GUIDANCE: &str = "You are Marelle, a local coding and research assistant.";
     body["messages"]
         .as_array()
         .expect("messages")
         .iter()
-        .map(|m| {
-            (
-                m["role"].as_str().unwrap().to_owned(),
-                m["content"].as_str().unwrap().to_owned(),
-            )
+        .filter_map(|message| {
+            let role = message["role"].as_str()?.to_owned();
+            let content = message["content"].as_str()?.to_owned();
+            if role == "system" {
+                if let Some((user_system, _)) = content.split_once(&format!("\n\n{AGENT_GUIDANCE}"))
+                {
+                    if user_system.trim().is_empty() {
+                        return None;
+                    }
+                    return Some((role, user_system.to_owned()));
+                }
+                if content.starts_with(AGENT_GUIDANCE) {
+                    return None;
+                }
+            }
+            Some((role, content))
         })
         .collect()
 }
 
 #[test]
-fn one_question_streams_the_answer_to_stdout_and_nothing_else() {
+fn one_question_writes_the_answer_to_stdout_and_nothing_else() {
     let server = MockServer::start(vec![answer(&["Hel", "lo", " there"])]);
     let result = chat(
         &server,
@@ -149,7 +158,7 @@ fn one_question_streams_the_answer_to_stdout_and_nothing_else() {
     );
     let body = body(&server, 0);
     assert_eq!(body["model"], "glm-x");
-    assert_eq!(body["stream"], true);
+    assert_eq!(body["stream"], false);
     assert_eq!(
         contents(&body),
         [("user".to_owned(), "Say hello".to_owned())]
@@ -486,27 +495,29 @@ fn a_rejected_key_gets_a_clear_message_and_advice() {
 }
 
 #[test]
-fn an_error_after_some_text_keeps_the_text_and_reports_the_error() {
-    let server = MockServer::start(vec![Reply::sse([
-        delta("partial"),
-        data(&json!({"error": {"message": "overloaded"}})),
-    ])]);
+fn a_provider_error_is_reported_without_output() {
+    let server = MockServer::start(vec![Reply::json(
+        503,
+        &json!({"error": {"message": "overloaded"}}).to_string(),
+    )]);
     let result = chat(&server, &["chat", "-m", "mock/x", "hi"], &[], "", false);
     assert_eq!(result.code, 1);
-    assert_eq!(
-        result.out, "partial\n",
-        "the cut-off text ends its line before the error"
-    );
+    assert_eq!(result.out, "");
     assert!(result.err.contains("overloaded"), "{}", result.err);
 }
 
 #[test]
 fn a_cut_off_answer_is_called_out() {
-    let server = MockServer::start(vec![Reply::sse([
-        delta("Long answ"),
-        finish("length"),
-        "data: [DONE]\n\n".to_owned(),
-    ])]);
+    let server = MockServer::start(vec![Reply::json(
+        200,
+        &json!({
+            "choices": [{
+                "message": {"content": "Long answ"},
+                "finish_reason": "length"
+            }]
+        })
+        .to_string(),
+    )]);
     let result = chat(&server, &["chat", "-m", "mock/x", "hi"], &[], "", false);
     assert_eq!(result.code, 0);
     assert_eq!(result.out, "Long answ\n");
@@ -520,10 +531,16 @@ fn a_cut_off_answer_is_called_out() {
 
 #[test]
 fn an_empty_answer_is_not_silent() {
-    let server = MockServer::start(vec![Reply::sse([
-        finish("stop"),
-        "data: [DONE]\n\n".to_owned(),
-    ])]);
+    let server = MockServer::start(vec![Reply::json(
+        200,
+        &json!({
+            "choices": [{
+                "message": {"content": ""},
+                "finish_reason": "stop"
+            }]
+        })
+        .to_string(),
+    )]);
     let result = chat(&server, &["chat", "-m", "mock/x", "hi"], &[], "", false);
     assert_eq!(result.code, 0);
     assert_eq!(result.out, "");
@@ -532,21 +549,28 @@ fn an_empty_answer_is_not_silent() {
 
 #[test]
 fn reasoning_stays_off_stdout_and_appears_only_on_request() {
-    let stream = || {
-        Reply::sse([
-            data(&json!({"choices": [{"delta": {"reasoning_content": "thinking hard"}}]})),
-            delta("42"),
-            finish("stop"),
-            "data: [DONE]\n\n".to_owned(),
-        ])
+    let response = || {
+        Reply::json(
+            200,
+            &json!({
+                "choices": [{
+                    "message": {
+                        "reasoning_content": "thinking hard",
+                        "content": "42"
+                    },
+                    "finish_reason": "stop"
+                }]
+            })
+            .to_string(),
+        )
     };
 
-    let server = MockServer::start(vec![stream()]);
+    let server = MockServer::start(vec![response()]);
     let quiet = chat(&server, &["chat", "-m", "mock/x", "hi"], &[], "", false);
     assert_eq!(quiet.out, "42\n");
     assert_eq!(quiet.err, "");
 
-    let server = MockServer::start(vec![stream()]);
+    let server = MockServer::start(vec![response()]);
     let loud = chat(
         &server,
         &["chat", "-m", "mock/x", "--show-reasoning", "hi"],
@@ -560,12 +584,17 @@ fn reasoning_stays_off_stdout_and_appears_only_on_request() {
 
 #[test]
 fn token_counts_are_shown_on_request() {
-    let server = MockServer::start(vec![Reply::sse([
-        delta("ok"),
-        finish("stop"),
-        data(&json!({"choices": [], "usage": {"prompt_tokens": 12, "completion_tokens": 3}})),
-        "data: [DONE]\n\n".to_owned(),
-    ])]);
+    let server = MockServer::start(vec![Reply::json(
+        200,
+        &json!({
+            "choices": [{
+                "message": {"content": "ok"},
+                "finish_reason": "stop"
+            }],
+            "usage": {"prompt_tokens": 12, "completion_tokens": 3}
+        })
+        .to_string(),
+    )]);
     let result = chat(
         &server,
         &["chat", "-m", "mock/x", "--show-usage", "hi"],
@@ -799,22 +828,18 @@ fn the_end_of_input_ends_the_session() {
 
 #[test]
 fn an_anthropic_style_provider_works_the_same_way() {
-    let event = |name: &str, value: Value| format!("event: {name}\ndata: {value}\n\n");
-    let server = MockServer::start(vec![Reply::sse([
-        event(
-            "message_start",
-            json!({"type": "message_start", "message": {"usage": {"input_tokens": 9}}}),
-        ),
-        event(
-            "content_block_delta",
-            json!({"type": "content_block_delta", "index": 0, "delta": {"type": "text_delta", "text": "Bonjour"}}),
-        ),
-        event(
-            "message_delta",
-            json!({"type": "message_delta", "delta": {"stop_reason": "end_turn"}, "usage": {"output_tokens": 2}}),
-        ),
-        event("message_stop", json!({"type": "message_stop"})),
-    ])]);
+    let server = MockServer::start(vec![Reply::json(
+        200,
+        &json!({
+            "id": "msg_test",
+            "type": "message",
+            "role": "assistant",
+            "content": [{"type": "text", "text": "Bonjour"}],
+            "stop_reason": "end_turn",
+            "usage": {"input_tokens": 9, "output_tokens": 2}
+        })
+        .to_string(),
+    )]);
     let result = chat(
         &server,
         &[
@@ -836,7 +861,12 @@ fn an_anthropic_style_provider_works_the_same_way() {
     let sent = &server.requests()[0];
     assert_eq!(sent.path, "/v1/messages");
     assert_eq!(sent.header("x-api-key"), Some(KEY));
-    assert_eq!(body(&server, 0)["system"], "Be brief.");
+    assert!(
+        body(&server, 0)["system"]
+            .as_str()
+            .unwrap()
+            .starts_with("Be brief.\n\nYou are Marelle"),
+    );
 }
 
 #[test]

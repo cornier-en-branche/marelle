@@ -2,6 +2,17 @@
 
 All notable changes are listed here, newest first. The project follows [Semantic Versioning](https://semver.org/), and while the version starts with `0.`, anything may change.
 
+## Unreleased
+
+### Added
+
+- Update check: when an interactive session starts, Marelle asks GitHub and GitLab for a newer version and mentions it once in the conversation, with the release page. Releases are asked for first, then tags; every failure stays silent. Sources and the timeout are settings: `update.check`, `update.github_repo`, `update.gitlab_repo`, `update.timeout_secs`.
+- Tool permission answers speak the interface language, and the confirmation offers "Allow always": the category is granted for the rest of the session, without ever lifting a `deny` policy. In the full-screen interface every tool call and its result join the transcript; the line session keeps them on stderr, and the terminal prompt answers `y` once, `a` always.
+
+### Changed
+
+- The name a person sees is always `Marelle`: the version line and the error prefixes now use the capital, like the banner and the help do. Command forms such as `marelle chat` stay lowercase.
+
 ## 0.1.0-alpha.1
 
 The first release that talks to a model.

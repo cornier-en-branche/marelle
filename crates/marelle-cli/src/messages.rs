@@ -38,7 +38,7 @@ impl Failure {
 
     /// Writes the failure to `err` and returns its exit code.
     pub fn print(&self, err: &mut dyn Write) -> io::Result<u8> {
-        writeln!(err, "marelle: {}", self.message)?;
+        writeln!(err, "Marelle: {}", self.message)?;
         if let Some(hint) = &self.hint {
             writeln!(err, "  {hint}")?;
         }
@@ -339,7 +339,7 @@ mod tests {
         assert_eq!(failure.print(&mut out).unwrap(), 1);
         assert_eq!(
             String::from_utf8(out).unwrap(),
-            "marelle: it broke\n  try again\n"
+            "Marelle: it broke\n  try again\n"
         );
     }
 }

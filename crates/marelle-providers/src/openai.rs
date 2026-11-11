@@ -12,7 +12,7 @@
 
 use std::ops::ControlFlow;
 
-use marelle_core::Role;
+use marelle_core::{Role, ToolCall};
 use serde_json::{Map, Value, json};
 
 use crate::chat::{ChatOutcome, ChatRequest, Collector, FinishReason, Sink, Usage};
@@ -41,13 +41,31 @@ pub(crate) fn build_body(
             Role::System => "system",
             Role::User => "user",
             Role::Assistant => "assistant",
-            Role::Tool => {
-                return Err(ProviderError::Unsupported {
-                    detail: "tool messages".to_owned(),
-                });
-            }
+            Role::Tool => "tool",
         };
-        messages.push(json!({ "role": role, "content": message.content }));
+        let mut wire = json!({ "role": role, "content": message.content });
+        if message.role == Role::Tool {
+            wire["tool_call_id"] = json!(message.tool_call_id.as_deref().unwrap_or_default());
+            if let Some(name) = &message.name {
+                wire["name"] = json!(name);
+            }
+        }
+        if message.role == Role::Assistant && !message.tool_calls.is_empty() {
+            wire["tool_calls"] = Value::Array(
+                message
+                    .tool_calls
+                    .iter()
+                    .map(|call| {
+                        json!({
+                            "id": call.id,
+                            "type": "function",
+                            "function": { "name": call.name, "arguments": call.arguments }
+                        })
+                    })
+                    .collect(),
+            );
+        }
+        messages.push(wire);
     }
 
     let mut body = Map::new();
@@ -65,6 +83,28 @@ pub(crate) fn build_body(
     }
     if let Some(temperature) = request.temperature {
         body.insert("temperature".to_owned(), json!(temperature));
+    }
+    if !request.tools.is_empty() {
+        body.insert(
+            "tools".to_owned(),
+            Value::Array(
+                request
+                    .tools
+                    .iter()
+                    .map(|tool| {
+                        json!({
+                            "type": "function",
+                            "function": {
+                                "name": tool.name,
+                                "description": tool.description,
+                                "parameters": tool.parameters
+                            }
+                        })
+                    })
+                    .collect(),
+            ),
+        );
+        body.insert("tool_choice".to_owned(), json!("auto"));
     }
     merge_extra(&mut body, &provider.extra_body);
     Ok(Value::Object(body))
@@ -155,6 +195,30 @@ impl Decoder {
             let text = content_text(part.get("content"));
             if self.collector.text(&text, sink).is_break() {
                 return Ok(ControlFlow::Break(()));
+            }
+            if let Some(calls) = part.get("tool_calls").and_then(Value::as_array) {
+                for call in calls {
+                    let Some(id) = call.get("id").and_then(Value::as_str) else {
+                        continue;
+                    };
+                    let Some(function) = call.get("function") else {
+                        continue;
+                    };
+                    let Some(name) = function.get("name").and_then(Value::as_str) else {
+                        continue;
+                    };
+                    let arguments = function
+                        .get("arguments")
+                        .and_then(Value::as_str)
+                        .map(str::to_owned)
+                        .or_else(|| function.get("arguments").map(Value::to_string))
+                        .unwrap_or_else(|| "{}".to_owned());
+                    self.collector.tool_calls.push(ToolCall {
+                        id: id.to_owned(),
+                        name: name.to_owned(),
+                        arguments,
+                    });
+                }
             }
         }
         if let Some(reason) = choice.get("finish_reason").and_then(Value::as_str) {
@@ -263,6 +327,7 @@ mod tests {
             max_tokens: Some(100),
             temperature: Some(0.5),
             stream: true,
+            tools: Vec::new(),
         }
     }
 
@@ -354,13 +419,26 @@ mod tests {
     }
 
     #[test]
-    fn tool_messages_are_refused_for_now() {
+    fn tool_messages_are_supported_and_preserve_call_ids() {
         let mut with_tool = request();
-        with_tool.messages.push(Message::new(Role::Tool, "result"));
-        assert!(matches!(
-            build_body(&provider(), &with_tool),
-            Err(ProviderError::Unsupported { .. })
-        ));
+        // With a system prompt the first wire message is the system one.
+        with_tool.system = None;
+        with_tool.messages = vec![
+            Message::with_tool_calls(
+                "",
+                vec![ToolCall {
+                    id: "call-1".into(),
+                    name: "read_file".into(),
+                    arguments: r#"{"path":"README.md"}"#.into(),
+                }],
+            ),
+            Message::tool_result("call-1", "read_file", "contents"),
+        ];
+        let body = build_body(&provider(), &with_tool).unwrap();
+        let messages = body["messages"].as_array().unwrap();
+        assert_eq!(messages[0]["tool_calls"][0]["id"], "call-1");
+        assert_eq!(messages[1]["tool_call_id"], "call-1");
+        assert_eq!(messages[1]["content"], "contents");
     }
 
     #[test]

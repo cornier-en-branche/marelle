@@ -13,6 +13,9 @@ mod messages;
 mod schema;
 mod settings;
 mod theme;
+mod tools;
+mod tui;
+mod update;
 
 use std::io::{self, BufRead, Write};
 
@@ -37,6 +40,12 @@ pub struct Io<'a> {
     /// Whether `input` is a person at a terminal. Without a prompt on the
     /// command line, that starts a session; a pipe is read as the prompt.
     pub interactive: bool,
+    /// Whether the process owns a real terminal that the full-screen
+    /// interface may take over: standard input, output and error are all
+    /// terminals. Only `main` sets this. Tests and anything that embeds the
+    /// library leave it off, so that a run never reaches for the terminal of
+    /// whoever started it.
+    pub screen: bool,
     /// Whether `err` understands colour.
     pub color: bool,
 }
@@ -60,7 +69,24 @@ pub fn run(args: &[String], env_vars: &[(String, String)], io: &mut Io<'_>) -> i
         None => Locale::from_env(lookup),
     };
 
-    let command = match args::parse(&global.words) {
+    let mut words = global.words.clone();
+    if words.is_empty() && io.interactive {
+        words.push("chat".to_owned());
+    } else if words
+        .first()
+        .is_some_and(|word| matches!(word.as_str(), "--tui" | "--continue" | "-c"))
+    {
+        let first = words.remove(0);
+        let mut chat = vec!["chat".to_owned()];
+        if first != "--tui" {
+            chat.push(first);
+        }
+        chat.extend(words);
+        words = chat;
+    } else if words.first().is_some_and(|word| word == "--tui") {
+        words[0] = "chat".to_owned();
+    }
+    let command = match args::parse(&words) {
         Ok(command) => command,
         Err(error) => {
             let (key, name) = match &error {
@@ -69,7 +95,7 @@ pub fn run(args: &[String], env_vars: &[(String, String)], io: &mut Io<'_>) -> i
             };
             writeln!(
                 io.err,
-                "marelle: {}",
+                "Marelle: {}",
                 tr_with(locale, key, &[("name", name)])
             )?;
             return Ok(USAGE_ERROR);
@@ -79,7 +105,7 @@ pub fn run(args: &[String], env_vars: &[(String, String)], io: &mut Io<'_>) -> i
     match command {
         Command::Help => help(locale, io.out),
         Command::Version => {
-            writeln!(io.out, "marelle {VERSION}")?;
+            writeln!(io.out, "Marelle {VERSION}")?;
             Ok(OK)
         }
         Command::Providers => inspect::providers(locale, env_vars, io),
@@ -127,6 +153,8 @@ fn help(locale: Locale, out: &mut dyn Write) -> io::Result<u8> {
     let options = [
         ("-p, --provider <id>", "help.opt.provider"),
         ("-m, --model <name>", "help.opt.model"),
+        ("-q, --query <text>", "help.opt.query"),
+        ("-c, --continue", "help.opt.continue"),
         ("    --system <text>", "help.opt.system"),
         ("    --max-tokens <n>", "help.opt.max_tokens"),
         ("    --temperature <x>", "help.opt.temperature"),
@@ -160,7 +188,8 @@ fn help(locale: Locale, out: &mut dyn Write) -> io::Result<u8> {
         "  git diff | marelle chat -p anthropic -m MODEL \"Review this diff:\" -"
     )?;
     writeln!(out, "  # {}", say("help.example.repl"))?;
-    writeln!(out, "  marelle chat -m zai/MODEL")?;
+    writeln!(out, "  marelle --tui")?;
+    writeln!(out, "  marelle --continue")?;
 
     writeln!(out)?;
     writeln!(out, "{}", say("help.env"))?;
@@ -186,6 +215,7 @@ mod tests {
             out: &mut out,
             err: &mut err,
             interactive: false,
+            screen: false,
             color: false,
         };
         let code = run(&args, &env, &mut io).expect("writing to memory cannot fail");
@@ -200,7 +230,7 @@ mod tests {
     fn version_prints_the_package_version() {
         let (code, out, _) = run_cli(&["version"], &[]);
         assert_eq!(code, 0);
-        assert_eq!(out, format!("marelle {VERSION}\n"));
+        assert_eq!(out, format!("Marelle {VERSION}\n"));
     }
 
     #[test]
@@ -253,7 +283,8 @@ mod tests {
                 .lines()
                 .filter(|line| line.starts_with("  -") || line.starts_with("      --"))
                 .collect();
-            assert_eq!(rows.len(), 9, "{locale:?}: option rows in:\n{out}");
+            // Four short chat flags, six long chat flags and one global flag.
+            assert_eq!(rows.len(), 11, "{locale:?}: option rows in:\n{out}");
             for row in rows {
                 let cells: Vec<char> = row.chars().collect();
                 assert_eq!(cells[24], ' ', "{locale:?}: {row}");

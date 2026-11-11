@@ -28,8 +28,8 @@ mod presets;
 mod secret;
 mod sse;
 
-pub use chat::{ChatOutcome, ChatRequest, FinishReason, Sink, StreamEvent, Usage};
-pub use client::{Client, NetworkSettings, ProxySetting};
+pub use chat::{ChatOutcome, ChatRequest, FinishReason, Sink, StreamEvent, ToolDefinition, Usage};
+pub use client::{Client, NetworkSettings, ProxySetting, plain_client};
 pub use config::{
     AuthStyle, MaxTokensField, ProviderConfig, ProviderKind, normalize_name, provider_names,
 };

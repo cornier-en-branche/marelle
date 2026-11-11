@@ -59,6 +59,8 @@ pub(crate) struct ChatArgs {
     pub words: Vec<String>,
     /// `--help` was given.
     pub help: bool,
+    /// Resume the most recently active saved conversation.
+    pub continue_session: bool,
 }
 
 #[derive(Debug, PartialEq, Eq)]
@@ -201,6 +203,8 @@ fn parse_chat<'a>(mut words: impl Iterator<Item = &'a str>) -> Result<ChatArgs, 
         };
         match name {
             "-h" | "--help" => chat.help = true,
+            "-c" | "--continue" => chat.continue_session = true,
+            "-q" | "--query" => chat.words.push(value()?),
             "-p" | "--provider" => chat.flags.push(("chat.provider", value()?)),
             "-m" | "--model" => chat.flags.push(("chat.model", value()?)),
             "--system" => chat.flags.push(("chat.system", value()?)),

@@ -6,7 +6,7 @@ app.tagline = Настраиваемый ИИ-агент для вашего т�
 
 # --- справка ---
 help.usage = Использование
-help.usage.line = marelle [--lang <код>] <команда> [параметры]
+help.usage.line = marelle [--lang <code>] [chat] [параметры] [запрос]
 help.commands = Команды
 help.cmd.chat = Разговор с моделью: один вопрос, конвейер или интерактивный сеанс
 help.cmd.providers = Список провайдеров и откуда берутся их API-ключи
@@ -15,6 +15,8 @@ help.cmd.help = Показать эту справку
 help.cmd.version = Показать версию
 help.chat_options = Параметры chat
 help.opt.provider = Идентификатор провайдера (см.: marelle providers)
+help.opt.query = Отправить один запрос и завершить работу
+help.opt.continue = Продолжить последнюю сохранённую беседу
 help.opt.model = Название модели или провайдер/модель, если провайдер не выбран
 help.opt.system = Системный промпт
 help.opt.max_tokens = Ограничить длину ответа, в токенах
@@ -27,7 +29,7 @@ help.opt.lang = Язык интерфейса: en, ru, fr, uk
 help.examples = Примеры
 help.example.ask = Задать один вопрос
 help.example.pipe = Передать вывод команды вместе с вопросом («-» означает stdin)
-help.example.repl = Запустить интерактивный сеанс
+help.example.repl = Запустить интерактивный чат командой `marelle` или `marelle --tui`
 help.env = Любую настройку можно задать и через окружение: MARELLE_CHAT__MODEL=zai/MODEL задаёт chat.model.
 help.exit_codes = Коды выхода: 0 — успех, 1 — ошибка провайдера или сети, 2 — ошибка в вызове или в настройках.
 
@@ -64,7 +66,7 @@ chat.judge.header = судья: {label}
 
 # --- интерактивный сеанс ---
 repl.banner = {provider} / {model} - /help покажет команды, /exit завершит сеанс
-repl.help = Команды: /help  /clear  /model [название]  /compare [модели|off]  /fallback [модели|off]  /judge [модель|off]  /system [текст|off]  /exit
+repl.help = Команды: /help  /clear  /model [имя]  /provider [id|off]  /session [new|имя]  /compare [модели|off]  /fallback [модели|off]  /judge [модель|off]  /system [текст|off]  /tools  /skills  /exit  ·  Ctrl+P открывает палитру команд
 repl.cleared = Разговор очищен.
 repl.model = Модель: {model}
 repl.model_set = Модель переключена на {model}.
@@ -158,3 +160,21 @@ fail.invalid_value = Настройка {key}: {reason}.
 fail.config_file = Не удалось использовать файл настроек: {detail}
 expected.list = список слов
 expected.hex_color = цвет в HEX, например #B57EDC
+
+update.available = Вышла новая версия {latest} (сейчас {current}). Подробнее: {url}
+tool.confirm.title = {label}?
+tool.confirm.allow_once = Разрешить один раз
+tool.confirm.allow_once.detail = Выполнить этот вызов инструмента один раз
+tool.confirm.allow_always = Разрешить всегда
+tool.confirm.allow_always.detail = Больше не спрашивать про такие инструменты до конца сеанса
+tool.confirm.deny = Запретить
+tool.confirm.deny.detail = Не выполнять этот вызов инструмента
+tool.label.terminal = Выполнить команду в терминале
+tool.label.read = Прочитать файл
+tool.label.list = Показать каталог
+tool.label.search = Искать в файлах
+tool.label.modify = Изменить файл
+tool.label.fetch = Загрузить страницу
+tool.notice.call = Инструмент {name}: {detail}
+tool.notice.result = {name} вернул: {result}
+agent.max_turns.note = Агент остановлен: достигнут agent.max_turns ({max}).

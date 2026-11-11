@@ -456,6 +456,36 @@ impl Client {
     }
 }
 
+/// Builds a plain client for background jobs that never carry a key, such as
+/// the update check. It shares the TLS roots, the proxy setting and the
+/// connect timeout with the chat client, and adds a whole-request `timeout`
+/// so a slow mirror cannot hold a session hostage.
+pub fn plain_client(
+    network: &NetworkSettings,
+    timeout: Duration,
+) -> Result<reqwest::Client, ProviderError> {
+    let mut builder = reqwest::Client::builder()
+        .tls_backend_preconfigured(tls_config(&network.extra_roots)?)
+        .http1_only()
+        // Same stance as the chat client: a redirect is a host the user
+        // never named, so it is not followed.
+        .redirect(reqwest::redirect::Policy::none())
+        .connect_timeout(network.connect_timeout)
+        .read_timeout(timeout)
+        .timeout(timeout)
+        .user_agent(USER_AGENT);
+    builder = match &network.proxy {
+        ProxySetting::System => builder,
+        ProxySetting::None => builder.no_proxy(),
+        ProxySetting::Url(text) => {
+            let proxy = reqwest::Proxy::all(text.as_str())
+                .map_err(|_| SettingError::new(PROXY_KEY, Expected::Proxy))?;
+            builder.proxy(proxy)
+        }
+    };
+    builder.build().map_err(transport)
+}
+
 /// A request ready to send, with the decoder that will read its answer.
 struct Prepared {
     url: String,
