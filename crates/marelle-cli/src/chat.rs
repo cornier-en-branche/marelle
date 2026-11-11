@@ -11,6 +11,7 @@ use std::fs::{self, OpenOptions};
 use std::io::{self, Write};
 use std::ops::ControlFlow;
 use std::path::PathBuf;
+use std::sync::mpsc::Receiver;
 
 use marelle_config::{Config, Expected, SettingError};
 use marelle_core::{Message, Role, Session, ToolCall};
@@ -30,6 +31,7 @@ use crate::messages::{Failure, config_failure, provider_failure, setting_failure
 use crate::settings::{build_config, env_lookup};
 use crate::theme::{self, Role as ThemeRole, Theme};
 use crate::tui::{InputAction, SelectorItem, Tui};
+use crate::update::{self, UpdateNotice};
 
 const OK: u8 = 0;
 
@@ -803,7 +805,7 @@ pub(crate) fn run(
     ) {
         Ok(restored) => restored,
         Err(error) => {
-            writeln!(io.err, "marelle: cannot load saved sessions: {error}")?;
+            writeln!(io.err, "Marelle: cannot load saved sessions: {error}")?;
             return Ok(2);
         }
     };
@@ -833,8 +835,25 @@ pub(crate) fn run(
             persist_session_store(env_vars, &plan.config, &conversation)?;
             Ok(result)
         }
-        None => repl(&runtime, &plan, conversation, locale, env_vars, io),
+        None => {
+            let updates = start_update_check(&plan, env_vars);
+            repl(&runtime, &plan, conversation, locale, env_vars, io, updates)
+        }
     }
+}
+
+/// Starts the background update check for an interactive session.
+///
+/// The notice lands on the returned channel. A failure to start stays
+/// silent, because the check informs and never blocks a session.
+fn start_update_check(
+    plan: &Plan,
+    env_vars: &[(String, String)],
+) -> Option<Receiver<UpdateNotice>> {
+    let lookup = |name: &str| env_lookup(env_vars, name);
+    let network = NetworkSettings::from_config(&plan.config, lookup).ok()?;
+    let settings = update::UpdateSettings::from_config(&plan.config);
+    update::spawn(&network, &settings)
 }
 
 fn read_stdin(io: &mut Io<'_>, locale: Locale) -> Result<String, Failure> {
@@ -1597,6 +1616,7 @@ fn repl(
     locale: Locale,
     env_vars: &[(String, String)],
     io: &mut Io<'_>,
+    updates: Option<Receiver<UpdateNotice>>,
 ) -> io::Result<u8> {
     if io.interactive && io.screen {
         let provider = plan.primary.as_ref().map_or_else(
@@ -1605,13 +1625,28 @@ fn repl(
         );
         let model = conversation.display_model(plan);
         if let Ok(mut tui) = Tui::enter(plan.ui.theme.clone(), provider, model, io.color) {
+            if let Some(updates) = updates {
+                tui.set_update_poll(Box::new(move || {
+                    updates.try_recv().ok().map(|notice| {
+                        tr_with(
+                            locale,
+                            "update.available",
+                            &[
+                                ("latest", &notice.latest),
+                                ("current", &notice.current),
+                                ("url", &notice.url),
+                            ],
+                        )
+                    })
+                }));
+            }
             return repl_tui(runtime, plan, conversation, locale, env_vars, io, &mut tui);
         }
     }
 
     // A real terminal may not support raw mode or alternate-screen control.
     // Retain the line-oriented REPL as a safe fallback.
-    repl_line(runtime, plan, conversation, locale, env_vars, io)
+    repl_line(runtime, plan, conversation, locale, env_vars, io, updates)
 }
 
 fn repl_tui(
@@ -1952,6 +1987,7 @@ fn repl_line(
     locale: Locale,
     env_vars: &[(String, String)],
     io: &mut Io<'_>,
+    updates: Option<Receiver<UpdateNotice>>,
 ) -> io::Result<u8> {
     let theme = &plan.ui.theme;
     let provider_label =
@@ -2000,6 +2036,25 @@ fn repl_line(
         )
     )?;
     loop {
+        // The update check answers on its own time; the notice joins the
+        // conversation whenever it arrives, before the next prompt.
+        if let Some(updates) = updates.as_ref() {
+            if let Ok(notice) = updates.try_recv() {
+                writeln!(
+                    io.err,
+                    "{}",
+                    tr_with(
+                        locale,
+                        "update.available",
+                        &[
+                            ("latest", &notice.latest),
+                            ("current", &notice.current),
+                            ("url", &notice.url),
+                        ],
+                    )
+                )?;
+            }
+        }
         write!(io.err, "{}", theme::prompt(theme, io.color))?;
         io.err.flush()?;
 

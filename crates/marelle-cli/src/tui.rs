@@ -73,6 +73,9 @@ pub(crate) struct Tui {
     history_draft: String,
     messages: Vec<UiMessage>,
     scroll: usize,
+    /// Asked between events for news that arrives on its own time, such as
+    /// the startup update check. Returning text turns it into a notice.
+    update_poll: Option<Box<dyn FnMut() -> Option<String>>>,
 }
 
 impl Tui {
@@ -122,6 +125,7 @@ impl Tui {
             history_draft: String::new(),
             messages: Vec::new(),
             scroll: 0,
+            update_poll: None,
         };
         tui.render()?;
         Ok(tui)
@@ -136,6 +140,12 @@ impl Tui {
     pub(crate) fn set_session(&mut self, name: String) -> io::Result<()> {
         self.session_name = name;
         self.render()
+    }
+
+    /// Installs the poll that turns news arriving on its own time, such as
+    /// the startup update check, into transcript notices.
+    pub(crate) fn set_update_poll(&mut self, poll: Box<dyn FnMut() -> Option<String>>) {
+        self.update_poll = Some(poll);
     }
 
     pub(crate) fn set_status(&mut self, status: impl Into<String>) -> io::Result<()> {
@@ -362,7 +372,19 @@ impl Tui {
     }
 
     /// Reads and handles one terminal event.
+    ///
+    /// Between events the update poll is heard, so a notice may join the
+    /// conversation even while nobody types. The event wait is bounded, which
+    /// is what gives the poll its turn.
     pub(crate) fn next_action(&mut self) -> io::Result<InputAction> {
+        if let Some(poll) = &mut self.update_poll {
+            if let Some(text) = poll() {
+                self.push_notice(text)?;
+            }
+        }
+        if !event::poll(std::time::Duration::from_millis(250))? {
+            return Ok(InputAction::Continue);
+        }
         match event::read()? {
             Event::Key(key) => self.handle_key(key),
             Event::Paste(text) => {
@@ -1022,6 +1044,7 @@ mod tests {
             history_draft: String::new(),
             messages: Vec::new(),
             scroll: 0,
+            update_poll: None,
         }
     }
 

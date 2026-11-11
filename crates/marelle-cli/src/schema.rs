@@ -282,6 +282,30 @@ pub(crate) const SETTINGS: &[SettingSpec] = &[
         description: "Allow a key over plain http to a non-local host.",
     },
     SettingSpec {
+        key: "update.check",
+        kind: Kind::Bool,
+        default: Some("true"),
+        description: "Ask GitHub and GitLab for a newer version at the start of an interactive session.",
+    },
+    SettingSpec {
+        key: "update.github_repo",
+        kind: Kind::String,
+        default: Some("cornier-en-branche/marelle"),
+        description: "GitHub owner/repo the update check asks for the newest release.",
+    },
+    SettingSpec {
+        key: "update.gitlab_repo",
+        kind: Kind::String,
+        default: Some(""),
+        description: "GitLab owner/repo the update check asks for the newest release. Empty disables GitLab.",
+    },
+    SettingSpec {
+        key: "update.timeout_secs",
+        kind: Kind::PositiveInteger,
+        default: Some("3"),
+        description: "Seconds the update check may spend on one source.",
+    },
+    SettingSpec {
         key: "theme.primary",
         kind: Kind::HexColor,
         default: Some("#B57EDC"),

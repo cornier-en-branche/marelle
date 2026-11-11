@@ -160,3 +160,5 @@ fail.invalid_value = Настройка {key}: {reason}.
 fail.config_file = Не удалось использовать файл настроек: {detail}
 expected.list = список слов
 expected.hex_color = цвет в HEX, например #B57EDC
+
+update.available = Вышла новая версия {latest} (сейчас {current}). Подробнее: {url}

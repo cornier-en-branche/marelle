@@ -137,8 +137,14 @@ Settings come in layers: built-in defaults, then environment variables, then fla
 | `network.proxy` | `system` | `system`, `none`, or a proxy URL |
 | `network.ca_bundle` | none | An extra file of trusted certificate authorities |
 | `network.allow_insecure_http` | `false` | Allow a key over plain `http` to a non-local host |
+| `update.check` | `true` | Ask GitHub and GitLab for a newer version when an interactive session starts |
+| `update.github_repo` | `cornier-en-branche/marelle` | GitHub `owner/repo` the check asks for the newest release |
+| `update.gitlab_repo` | none | GitLab `owner/repo` the check also asks. Empty disables GitLab |
+| `update.timeout_secs` | `3` | Seconds the check may spend on one source |
 
 Marelle carries its own list of trusted certificate authorities, so it also works where the system has none, as in Termux. `SSL_CERT_FILE` adds more.
+
+When a newer version is found, the session mentions it once — the version, what you have, and where to get it. A release is asked for first; a repository that only tags its commits falls back to its newest tag. Anything that goes wrong stays silent.
 
 ## Your keys stay yours
 

@@ -2,6 +2,16 @@
 
 All notable changes are listed here, newest first. The project follows [Semantic Versioning](https://semver.org/), and while the version starts with `0.`, anything may change.
 
+## Unreleased
+
+### Added
+
+- Update check: when an interactive session starts, Marelle asks GitHub and GitLab for a newer version and mentions it once in the conversation, with the release page. Releases are asked for first, then tags; every failure stays silent. Sources and the timeout are settings: `update.check`, `update.github_repo`, `update.gitlab_repo`, `update.timeout_secs`.
+
+### Changed
+
+- The name a person sees is always `Marelle`: the version line and the error prefixes now use the capital, like the banner and the help do. Command forms such as `marelle chat` stay lowercase.
+
 ## 0.1.0-alpha.1
 
 The first release that talks to a model.

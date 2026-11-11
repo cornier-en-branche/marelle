@@ -160,3 +160,5 @@ fail.invalid_value = Réglage {key} : {reason}.
 fail.config_file = Impossible d'utiliser le fichier de réglages : {detail}
 expected.list = une liste de mots
 expected.hex_color = une couleur HEX, par exemple #B57EDC
+
+update.available = La version {latest} est disponible (actuel : {current}). Voir {url}

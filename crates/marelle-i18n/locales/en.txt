@@ -160,3 +160,5 @@ fail.invalid_value = Setting {key}: {reason}.
 fail.config_file = Cannot use the settings file: {detail}
 expected.list = a list of words
 expected.hex_color = a HEX colour, such as #B57EDC
+
+update.available = New version {latest} is out (this is {current}). See {url}
