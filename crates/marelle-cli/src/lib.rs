@@ -15,6 +15,7 @@ mod settings;
 mod theme;
 mod tools;
 mod tui;
+mod update;
 
 use std::io::{self, BufRead, Write};
 
@@ -94,7 +95,7 @@ pub fn run(args: &[String], env_vars: &[(String, String)], io: &mut Io<'_>) -> i
             };
             writeln!(
                 io.err,
-                "marelle: {}",
+                "Marelle: {}",
                 tr_with(locale, key, &[("name", name)])
             )?;
             return Ok(USAGE_ERROR);
@@ -104,7 +105,7 @@ pub fn run(args: &[String], env_vars: &[(String, String)], io: &mut Io<'_>) -> i
     match command {
         Command::Help => help(locale, io.out),
         Command::Version => {
-            writeln!(io.out, "marelle {VERSION}")?;
+            writeln!(io.out, "Marelle {VERSION}")?;
             Ok(OK)
         }
         Command::Providers => inspect::providers(locale, env_vars, io),
@@ -229,7 +230,7 @@ mod tests {
     fn version_prints_the_package_version() {
         let (code, out, _) = run_cli(&["version"], &[]);
         assert_eq!(code, 0);
-        assert_eq!(out, format!("marelle {VERSION}\n"));
+        assert_eq!(out, format!("Marelle {VERSION}\n"));
     }
 
     #[test]
