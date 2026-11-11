@@ -162,7 +162,7 @@ The interface speaks English, Russian, French and Ukrainian. Choose with `--lang
 1. **Talk.** OpenAI-compatible and Anthropic adapters, with both SSE streaming and complete-response decoding. Tool-enabled agent turns currently use complete responses. *Done.*
 2. **Settings and look.** TOML setting files, global and per project, with `config set`, `get` and `unset` and a description for every key. A themed interface in the spirit of [Hermes Agent](https://github.com/NousResearch/hermes-agent): banner, information panel, framed answers, spinner, in wisteria purple by default with any colour settable as HEX. *Done.*
 3. **Many models.** Model aliases, asking several models at once and comparing the answers, fallback chains, and a judge model that merges them. *Done.*
-4. **Act.** Structured tool calling for OpenAI-compatible and Anthropic providers, local file/search/terminal tools, URL fetching, local skills and allow/ask/deny permissions. *Prototype implemented.*
+4. **Act.** Structured tool calling for OpenAI-compatible and Anthropic providers, local file/search/terminal tools, URL fetching, local skills and allow/ask/deny permissions, with the transcript showing every tool call and its result. *Done.*
 5. **Remember.** Named conversations persist locally between runs. Long-term semantic memory is still ahead.
 6. **Extend.** MCP servers, external plugins, subagents and richer skills support.
 7. **Reach.** Browser automation, messaging gateways and scheduled tasks.

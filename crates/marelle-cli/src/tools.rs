@@ -11,6 +11,7 @@ use std::process::Command;
 
 use marelle_config::Config;
 use marelle_core::ToolCall;
+use marelle_i18n::{Locale, tr};
 use marelle_providers::ToolDefinition;
 use serde_json::{Value, json};
 
@@ -18,6 +19,29 @@ const MAX_FILE_BYTES: u64 = 1_048_576;
 const MAX_TOOL_OUTPUT: usize = 32 * 1024;
 const MAX_SEARCH_FILES: usize = 500;
 const MAX_SEARCH_MATCHES: usize = 100;
+
+/// One permission question, ready to show to a person.
+pub(crate) struct ToolAsk {
+    /// The permission setting the question belongs to, such as
+    /// `permissions.shell`. "Allow always" answers are remembered per
+    /// category for the rest of the session.
+    pub(crate) category: &'static str,
+    /// What the tool wants to do, in the interface language.
+    pub(crate) label: String,
+    /// The command, path or address it wants to act on.
+    pub(crate) detail: String,
+}
+
+/// How a person answered a [`ToolAsk`].
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum ToolDecision {
+    /// Run this call once; ask again on the next one.
+    AllowOnce,
+    /// Run this call and stop asking for the category this session.
+    AllowAlways,
+    /// Do not run this call.
+    Deny,
+}
 
 fn schema(properties: Value, required: &[&str]) -> Value {
     json!({
@@ -118,16 +142,22 @@ fn permission(config: &Config, key: &str, default: &str) -> &'static str {
 
 fn confirm(
     config: &Config,
-    key: &str,
-    default: &str,
-    label: &str,
-    detail: &str,
-    approve: &mut dyn FnMut(&str, &str) -> io::Result<bool>,
+    key: &'static str,
+    label_key: &str,
+    detail: String,
+    locale: Locale,
+    approve: &mut dyn FnMut(&ToolAsk) -> io::Result<ToolDecision>,
 ) -> io::Result<bool> {
-    match permission(config, key, default) {
+    match permission(config, key, "ask") {
         "allow" => Ok(true),
         "deny" => Ok(false),
-        _ => approve(label, detail),
+        // The asker owns the session memory: a category already allowed
+        // always comes back answered, without a dialog.
+        _ => Ok(approve(&ToolAsk {
+            category: key,
+            label: tr(locale, label_key),
+            detail,
+        })? != ToolDecision::Deny),
     }
 }
 
@@ -579,19 +609,20 @@ fn load_skill(args: &Value) -> Result<String, String> {
 pub(crate) fn execute(
     call: &ToolCall,
     config: &Config,
-    approve: &mut dyn FnMut(&str, &str) -> io::Result<bool>,
+    locale: Locale,
+    approve: &mut dyn FnMut(&ToolAsk) -> io::Result<ToolDecision>,
 ) -> Result<String, String> {
     let args: Value = serde_json::from_str(&call.arguments)
         .map_err(|error| format!("Tool arguments are not valid JSON: {error}"))?;
     match call.name.as_str() {
         "terminal" => {
-            let command = text_arg(&args, "command")?;
+            let command = text_arg(&args, "command")?.to_owned();
             if !confirm(
                 config,
                 "permissions.shell",
-                "ask",
-                "Run terminal command",
+                "tool.label.terminal",
                 command,
+                locale,
                 approve,
             )
             .map_err(|error| error.to_string())?
@@ -601,13 +632,13 @@ pub(crate) fn execute(
             terminal(&args, config)
         }
         "read_file" => {
-            let path = text_arg(&args, "path")?;
+            let path = text_arg(&args, "path")?.to_owned();
             if !confirm(
                 config,
                 "permissions.files_read",
-                "allow",
-                "Read file",
+                "tool.label.read",
                 path,
+                locale,
                 approve,
             )
             .map_err(|error| error.to_string())?
@@ -617,13 +648,17 @@ pub(crate) fn execute(
             read_file(&args, config)
         }
         "list_directory" => {
-            let path = args.get("path").and_then(Value::as_str).unwrap_or(".");
+            let path = args
+                .get("path")
+                .and_then(Value::as_str)
+                .unwrap_or(".")
+                .to_owned();
             if !confirm(
                 config,
                 "permissions.files_read",
-                "allow",
-                "List directory",
+                "tool.label.list",
                 path,
+                locale,
                 approve,
             )
             .map_err(|error| error.to_string())?
@@ -641,9 +676,9 @@ pub(crate) fn execute(
             if !confirm(
                 config,
                 "permissions.files_read",
-                "allow",
-                "Search files",
-                &detail,
+                "tool.label.search",
+                detail,
+                locale,
                 approve,
             )
             .map_err(|error| error.to_string())?
@@ -653,13 +688,13 @@ pub(crate) fn execute(
             search_text(&args, config)
         }
         "write_file" | "edit_file" => {
-            let path = text_arg(&args, "path")?;
+            let path = text_arg(&args, "path")?.to_owned();
             if !confirm(
                 config,
                 "permissions.files_write",
-                "ask",
-                "Modify file",
+                "tool.label.modify",
                 path,
+                locale,
                 approve,
             )
             .map_err(|error| error.to_string())?
@@ -673,13 +708,13 @@ pub(crate) fn execute(
             }
         }
         "fetch_url" => {
-            let url = text_arg(&args, "url")?;
+            let url = text_arg(&args, "url")?.to_owned();
             if !confirm(
                 config,
                 "permissions.network",
-                "ask",
-                "Fetch URL",
+                "tool.label.fetch",
                 url,
+                locale,
                 approve,
             )
             .map_err(|error| error.to_string())?

@@ -30,6 +30,7 @@ use crate::args::ChatArgs;
 use crate::messages::{Failure, config_failure, provider_failure, setting_failure};
 use crate::settings::{build_config, env_lookup};
 use crate::theme::{self, Role as ThemeRole, Theme};
+use crate::tools::{ToolAsk, ToolDecision};
 use crate::tui::{InputAction, SelectorItem, Tui};
 use crate::update::{self, UpdateNotice};
 
@@ -352,6 +353,10 @@ struct Conversation {
     fallback: Vec<String>,
     judge: Option<String>,
     system: SystemChoice,
+    /// Tool permission categories answered with "Allow always" this
+    /// session; an `ask` for one of them is granted without a dialog. A
+    /// `deny` policy is never lifted by it.
+    tool_allowed: Vec<&'static str>,
 }
 
 fn effective_provider_name_for(
@@ -796,6 +801,7 @@ pub(crate) fn run(
         fallback: plan.fallback.clone(),
         judge: plan.judge.clone(),
         system: SystemChoice::Default,
+        tool_allowed: Vec::new(),
     };
     let restored = match restore_session_store(
         env_vars,
@@ -961,6 +967,10 @@ fn single_turn(
         .ok()
         .flatten()
         .unwrap_or(20) as usize;
+    // Categories the person allowed for the whole session with "Allow
+    // always"; a policy of `deny` is never lifted by it. The list lives on
+    // the conversation, so it outlives one turn.
+    let session_allowed = &mut conversation.tool_allowed;
 
     if attempts.is_empty() {
         return Failure::usage(tr(locale, "chat.no_model")).print(io.err);
@@ -1106,7 +1116,8 @@ fn single_turn(
                 }
                 Ok(outcome) if !outcome.tool_calls.is_empty() => {
                     if tool_rounds >= max_turns {
-                        let note = format!("Agent stopped: reached agent.max_turns ({max_turns}).");
+                        let max = max_turns.to_string();
+                        let note = tr_with(locale, "agent.max_turns.note", &[("max", &max)]);
                         writeln!(io.err, "{note}")?;
                         conversation
                             .session
@@ -1129,39 +1140,81 @@ fn single_turn(
                     ));
 
                     for call in outcome.tool_calls {
-                        writeln!(io.err, "\n[Marelle tool] {}", call.name)?;
-                        let mut approve = |label: &str, detail: &str| -> io::Result<bool> {
+                        // The transcript hears about every call and its
+                        // result; stderr carries them for line sessions only,
+                        // because the full-screen interface owns the screen.
+                        let detail = tool_detail(&call);
+                        if let Some(ui) = tui.as_deref_mut() {
+                            let _ = ui.push_notice(tr_with(
+                                locale,
+                                "tool.notice.call",
+                                &[("name", &call.name), ("detail", &detail)],
+                            ));
+                        } else {
+                            writeln!(io.err, "\n[Marelle tool] {} {detail}", call.name)?;
+                        }
+                        let mut approve = |ask: &ToolAsk| -> io::Result<ToolDecision> {
+                            if session_allowed.contains(&ask.category) {
+                                return Ok(ToolDecision::AllowOnce);
+                            }
                             if let Some(ui) = tui.as_deref_mut() {
                                 let items = vec![
                                     SelectorItem {
-                                        value: "allow".to_owned(),
-                                        label: "Allow once".to_owned(),
-                                        detail: detail.to_owned(),
+                                        value: "once".to_owned(),
+                                        label: tr(locale, "tool.confirm.allow_once"),
+                                        detail: ask.detail.clone(),
+                                    },
+                                    SelectorItem {
+                                        value: "always".to_owned(),
+                                        label: tr(locale, "tool.confirm.allow_always"),
+                                        detail: tr(locale, "tool.confirm.allow_always.detail"),
                                     },
                                     SelectorItem {
                                         value: "deny".to_owned(),
-                                        label: "Deny".to_owned(),
-                                        detail: "Do not run this tool call".to_owned(),
+                                        label: tr(locale, "tool.confirm.deny"),
+                                        detail: tr(locale, "tool.confirm.deny.detail"),
                                     },
                                 ];
-                                let title = format!("{label}?");
-                                Ok(ui.select(&title, &items)?.as_deref() == Some("allow"))
+                                let title =
+                                    tr_with(locale, "tool.confirm.title", &[("label", &ask.label)]);
+                                match ui.select(&title, &items)?.as_deref() {
+                                    Some("always") => {
+                                        session_allowed.push(ask.category);
+                                        Ok(ToolDecision::AllowAlways)
+                                    }
+                                    Some("once") => Ok(ToolDecision::AllowOnce),
+                                    _ => Ok(ToolDecision::Deny),
+                                }
                             } else if interactive {
-                                writeln!(io.err, "{label}:\n{detail}\nAllow once? [y/N]")?;
+                                writeln!(
+                                    io.err,
+                                    "{}:\n{}\n[y] once  [a] always this session  [N] deny",
+                                    ask.label, ask.detail
+                                )?;
                                 io.err.flush()?;
                                 let mut answer = String::new();
                                 io.input.read_line(&mut answer)?;
-                                Ok(matches!(
-                                    answer.trim().to_ascii_lowercase().as_str(),
-                                    "y" | "yes"
-                                ))
+                                match answer.trim().to_ascii_lowercase().as_str() {
+                                    "a" | "always" | "2" => Ok(ToolDecision::AllowAlways),
+                                    "y" | "yes" | "1" => Ok(ToolDecision::AllowOnce),
+                                    _ => Ok(ToolDecision::Deny),
+                                }
                             } else {
-                                Ok(false)
+                                Ok(ToolDecision::Deny)
                             }
                         };
 
-                        let result = crate::tools::execute(&call, &plan.config, &mut approve)
-                            .unwrap_or_else(|error| format!("Tool error: {error}"));
+                        let result =
+                            crate::tools::execute(&call, &plan.config, locale, &mut approve)
+                                .unwrap_or_else(|error| format!("Tool error: {error}"));
+                        if let Some(ui) = tui.as_deref_mut() {
+                            let short = shorten(&result, 240);
+                            let _ = ui.push_notice(tr_with(
+                                locale,
+                                "tool.notice.result",
+                                &[("name", &call.name), ("result", &short)],
+                            ));
+                        }
                         conversation
                             .session
                             .push(Message::tool_result(call.id, call.name, result));
@@ -2125,6 +2178,19 @@ fn slash_command(line: &str) -> Option<(&str, &str)> {
     Some((name, rest))
 }
 
+/// The argument a person recognizes: the command, path, address or query a
+/// tool call is about, falling back to a short look at the raw arguments.
+fn tool_detail(call: &ToolCall) -> String {
+    serde_json::from_str::<Value>(&call.arguments)
+        .ok()
+        .and_then(|args| {
+            ["command", "path", "url", "query"]
+                .iter()
+                .find_map(|key| args.get(*key).and_then(Value::as_str).map(str::to_owned))
+        })
+        .unwrap_or_else(|| shorten(&call.arguments, 80))
+}
+
 fn command(
     name: &str,
     rest: &str,
@@ -2443,6 +2509,7 @@ mod tests {
             fallback: vec!["openai/fallback".to_owned()],
             judge: None,
             system: SystemChoice::Text("Be precise".to_owned()),
+            tool_allowed: Vec::new(),
         };
         conversation
             .session
@@ -2540,6 +2607,7 @@ mod tests {
             fallback: Vec::new(),
             judge: None,
             system: SystemChoice::Default,
+            tool_allowed: Vec::new(),
         };
         original
             .session
@@ -2557,6 +2625,7 @@ mod tests {
             fallback: Vec::new(),
             judge: None,
             system: SystemChoice::Default,
+            tool_allowed: Vec::new(),
         };
         assert!(restore_session_store(&env, &config, &mut resumed, true).unwrap());
         assert_eq!(resumed.session_name, "Work");
